@@ -1,0 +1,13 @@
+node_modules
+.env
+.env.local
+.next
+.next/types
+.next/dev/types
+.next/dev/types/**/*.ts
+.next/dev/types/**/*.tsx
+.next/dev/types/**/*.mts
+.next/dev/types/**/*.mtsx
+.next/dev/types/**/*.mtsx
+.next/dev/types/**/*.mtsx
+.next/dev/types/**/*.mtsx
