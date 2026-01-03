@@ -63,7 +63,7 @@ const UserSchema: Schema = new Schema(
 				return !this.googleId;
 			}
 		},
-		role: { type: String, enum: ["user", "admin", "doctor", "staff"], default: "user" },
+		role: { type: String, enum: ["pet_owner", "veterinarian", "shelter", "pharmacy", "admin", "staff"], default: "pet_owner" },
 		__v: { type: Number, default: 0 },
 		avatar: {
 			public_id: String,

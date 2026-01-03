@@ -2,6 +2,7 @@ import mongoose, { Schema, Document } from "mongoose";
 
 export interface IPet extends Document {
 	ownerId: mongoose.Types.ObjectId;
+	petId: string; // Unique pet ID for QR code
 	name: string;
 	species: "dog" | "cat" | "bird" | "rabbit" | "other";
 	breed?: string;
@@ -18,6 +19,7 @@ export interface IPet extends Document {
 const petSchema = new Schema<IPet>(
 	{
 		ownerId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+		petId: { type: String, unique: true, sparse: true, index: true },
 		name: { type: String, required: true, trim: true },
 		species: { type: String, enum: ["dog", "cat", "bird", "rabbit", "other"], required: true },
 		breed: String,
