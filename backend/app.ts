@@ -3,6 +3,8 @@ import swaggerUi from "swagger-ui-express";
 import swaggerJSDoc from "swagger-jsdoc";
 import appointmentRoutes from "./routes/appointments";
 import authRoutes from "./routes/auth";
+import petRoutes from "./routes/pets";
+import doctorRoutes from "./routes/doctors";
 
 /**
  * @swagger
@@ -152,6 +154,17 @@ import authRoutes from "./routes/auth";
  */
 const app = express();
 
+// CORS middleware
+app.use((req, res, next) => {
+	res.header("Access-Control-Allow-Origin", "*");
+	res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+	res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
+	if (req.method === "OPTIONS") {
+		return res.sendStatus(200);
+	}
+	next();
+});
+
 // Global middleware
 app.use(express.json());
 
@@ -197,6 +210,8 @@ app.get("/health", (_req, res) => {
 // Routes
 app.use("/api/appointments", appointmentRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/pets", petRoutes);
+app.use("/api/doctors", doctorRoutes);
 
 // Swagger setup
 const swaggerSpec = swaggerJSDoc({
