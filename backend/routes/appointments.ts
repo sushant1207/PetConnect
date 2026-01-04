@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { createAppointment, getAvailability } from "../controller/appointmentController";
+import { createAppointment, getAvailability, getAppointmentsByDoctor, getAppointmentsByUser, updateAppointmentStatus } from "../controller/appointmentController";
 
 const router = Router();
 
@@ -71,6 +71,9 @@ router.get("/availability", getAvailability);
  *         description: Server error
  */
 router.post("/", createAppointment);
+router.get("/doctor/:doctorId", getAppointmentsByDoctor);
+router.get("/user/:userId", getAppointmentsByUser);
+router.put("/:id/status", updateAppointmentStatus);
 
 export default router;
 
