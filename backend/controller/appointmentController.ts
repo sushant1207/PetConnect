@@ -59,14 +59,15 @@ export async function createAppointment(req: Request, res: Response) {
 			reason,
 			locationPreference,
 			address,
-			notes
+			notes,
+			petId
 		} = req.body;
 
 		if (!user || !doctorId || !date || !timeSlot || !petName || !petType || !reason || !locationPreference) {
 			return res.status(400).json({ message: "Missing required fields" });
 		}
 
-		const doctor = await Doctor.findById(doctorId).select("availability appointmentDuration");
+		const doctor = await Doctor.findById(doctorId).select("availability appointmentDuration bookingFee");
 		if (!doctor) return res.status(404).json({ message: "Doctor not found" });
 
 		const selectedDate = new Date(date);
@@ -106,13 +107,77 @@ export async function createAppointment(req: Request, res: Response) {
 			notes,
 			status: "pending",
 			appointmentDuration: doctor.appointmentDuration || 30,
-			payment: { status: "pending", amount: 0 }
+			payment: { status: "pending", amount: doctor.bookingFee || 0 }
 		});
 
 		return res.status(201).json({ message: "Appointment booked", appointment: created });
-	} catch (_error) {
-		return res.status(500).json({ message: "Failed to create appointment" });
+	} catch (error: any) {
+		console.error("Create appointment error:", error);
+		return res.status(500).json({ message: error.message || "Failed to create appointment" });
 	}
 }
 
+export async function getAppointmentsByDoctor(req: Request, res: Response) {
+	try {
+		const { doctorId } = req.params;
+		
+		// Try to find doctor by ID first
+		let doctor = await Doctor.findById(doctorId);
+		
+		// If not found, try to find by user ID (when doctorId is actually userId)
+		if (!doctor) {
+			const User = (await import("../models/User")).default;
+			const user = await User.findById(doctorId);
+			if (user && user.role === "veterinarian") {
+				doctor = await Doctor.findOne({ email: user.email });
+			}
+		}
+		
+		if (!doctor) {
+			return res.status(404).json({ message: "Doctor not found" });
+		}
+		
+		const appointments = await Appointment.find({ doctor: doctor._id })
+			.populate("user", "firstName lastName email phone")
+			.sort({ date: 1, timeSlot: 1 });
+		return res.json({ appointments });
+	} catch (error: any) {
+		console.error("Get appointments error:", error);
+		return res.status(500).json({ message: "Failed to fetch appointments" });
+	}
+}
 
+export async function getAppointmentsByUser(req: Request, res: Response) {
+	try {
+		const { userId } = req.params;
+		const appointments = await Appointment.find({ user: userId })
+			.populate("doctor", "firstName lastName specialization")
+			.sort({ date: -1, timeSlot: 1 });
+		return res.json({ appointments });
+	} catch (error: any) {
+		console.error("Get appointments error:", error);
+		return res.status(500).json({ message: "Failed to fetch appointments" });
+	}
+}
+
+export async function updateAppointmentStatus(req: Request, res: Response) {
+	try {
+		const { id } = req.params;
+		const { status, cancellationReason } = req.body;
+
+		const appointment = await Appointment.findByIdAndUpdate(
+			id,
+			{ status, cancellationReason },
+			{ new: true, runValidators: true }
+		).populate("user", "firstName lastName email").populate("doctor", "firstName lastName");
+
+		if (!appointment) {
+			return res.status(404).json({ message: "Appointment not found" });
+		}
+
+		return res.json({ message: "Appointment updated", appointment });
+	} catch (error: any) {
+		console.error("Update appointment error:", error);
+		return res.status(500).json({ message: "Failed to update appointment" });
+	}
+}
