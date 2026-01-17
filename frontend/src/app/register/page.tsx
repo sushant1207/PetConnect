@@ -62,15 +62,11 @@ export default function RegisterPage() {
       localStorage.setItem("user", JSON.stringify(data.user));
       
       // Redirect to dashboard
-<<<<<<< Updated upstream
-      router.push("/dashboard");
-=======
       if (data.user.role === "veterinarian") {
         router.push("/dashboard/vet");
       } else {
         router.push("/dashboard");
       }
->>>>>>> Stashed changes
     } catch (err: any) {
       setError(err.message || "Something went wrong");
     } finally {

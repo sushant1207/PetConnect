@@ -5,11 +5,8 @@ import appointmentRoutes from "./routes/appointments";
 import authRoutes from "./routes/auth";
 import petRoutes from "./routes/pets";
 import doctorRoutes from "./routes/doctors";
-<<<<<<< Updated upstream
-=======
 import lostFoundRoutes from "./routes/lostFound";
 import charityRoutes from "./routes/charity";
->>>>>>> Stashed changes
 
 /**
  * @swagger
@@ -217,11 +214,8 @@ app.use("/api/appointments", appointmentRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/pets", petRoutes);
 app.use("/api/doctors", doctorRoutes);
-<<<<<<< Updated upstream
-=======
 app.use("/api/lost-found", lostFoundRoutes);
 app.use("/api/charity", charityRoutes);
->>>>>>> Stashed changes
 
 // Swagger setup
 const swaggerSpec = swaggerJSDoc({
