@@ -19,6 +19,10 @@ export default function DashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+<<<<<<< Updated upstream
+=======
+  const [stats, setStats] = useState({ totalRaised: 0, donationCount: 0, campaignCount: 0 });
+>>>>>>> Stashed changes
 
   useEffect(() => {
     // Check if user is logged in
@@ -33,6 +37,12 @@ export default function DashboardPage() {
     try {
       const parsedUser = JSON.parse(userData);
       setUser(parsedUser);
+<<<<<<< Updated upstream
+=======
+      if (parsedUser.role === "shelter") {
+        fetchShelterStats(token);
+      }
+>>>>>>> Stashed changes
     } catch (error) {
       console.error("Error parsing user data:", error);
       router.push("/login");
@@ -41,6 +51,23 @@ export default function DashboardPage() {
     }
   }, [router]);
 
+<<<<<<< Updated upstream
+=======
+  const fetchShelterStats = async (token: string) => {
+    try {
+      const response = await fetch("http://localhost:5555/api/charity/campaigns/stats", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setStats(data);
+      }
+    } catch (error) {
+      console.error("Error fetching shelter stats:", error);
+    }
+  };
+
+>>>>>>> Stashed changes
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -62,13 +89,26 @@ export default function DashboardPage() {
     return null;
   }
 
+<<<<<<< Updated upstream
+=======
+  const isPetOwner = user.role === "pet_owner";
+  const isShelter = user.role === "shelter";
+  const isPharmacy = user.role === "pharmacy";
+
+>>>>>>> Stashed changes
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar user={user} />
       <main className="flex-1 overflow-y-auto p-6 md:p-8 lg:p-12">
         <div className="max-w-7xl mx-auto">
           <div className="mb-8">
+<<<<<<< Updated upstream
             <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
+=======
+            <h1 className="text-3xl font-bold mb-2">
+              {isShelter ? "Shelter Dashboard" : isPharmacy ? "Pharmacy Dashboard" : "Dashboard"}
+            </h1>
+>>>>>>> Stashed changes
             <p className="text-muted-foreground">Welcome back, {user.firstName || user.email}!</p>
           </div>
 
@@ -82,6 +122,7 @@ export default function DashboardPage() {
             <div className="lg:col-span-2 space-y-6">
               {/* Stats Cards */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+<<<<<<< Updated upstream
                 <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
                   <div className="text-2xl mb-2">📅</div>
                   <div className="text-2xl font-bold">0</div>
@@ -97,12 +138,72 @@ export default function DashboardPage() {
                   <div className="text-2xl font-bold">0</div>
                   <div className="text-sm text-muted-foreground">Donations</div>
                 </div>
+=======
+                {isPetOwner && (
+                  <>
+                    <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
+                      <div className="text-2xl mb-2">📅</div>
+                      <div className="text-2xl font-bold">0</div>
+                      <div className="text-sm text-muted-foreground">Appointments</div>
+                    </div>
+                    <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
+                      <div className="text-2xl mb-2">🐾</div>
+                      <div className="text-2xl font-bold">0</div>
+                      <div className="text-sm text-muted-foreground">Pets</div>
+                    </div>
+                    <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
+                      <div className="text-2xl mb-2">❤️</div>
+                      <div className="text-2xl font-bold">0</div>
+                      <div className="text-sm text-muted-foreground">Donations</div>
+                    </div>
+                  </>
+                )}
+                {isShelter && (
+                  <>
+                    <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
+                      <div className="text-2xl mb-2">🆘</div>
+                      <div className="text-2xl font-bold">{stats.campaignCount}</div>
+                      <div className="text-sm text-muted-foreground">Active Campaigns</div>
+                    </div>
+                    <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
+                      <div className="text-2xl mb-2">🏠</div>
+                      <div className="text-2xl font-bold">{stats.donationCount}</div>
+                      <div className="text-sm text-muted-foreground">Total Donations</div>
+                    </div>
+                    <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
+                      <div className="text-2xl mb-2">💰</div>
+                      <div className="text-2xl font-bold">Rs. {stats.totalRaised}</div>
+                      <div className="text-sm text-muted-foreground">Donations Received</div>
+                    </div>
+                  </>
+                )}
+                {isPharmacy && (
+                  <>
+                    <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
+                      <div className="text-2xl mb-2">💊</div>
+                      <div className="text-2xl font-bold">0</div>
+                      <div className="text-sm text-muted-foreground">Active Orders</div>
+                    </div>
+                    <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
+                      <div className="text-2xl mb-2">📦</div>
+                      <div className="text-2xl font-bold">0</div>
+                      <div className="text-sm text-muted-foreground">Medicines in Stock</div>
+                    </div>
+                    <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
+                      <div className="text-2xl mb-2">✅</div>
+                      <div className="text-2xl font-bold">0</div>
+                      <div className="text-sm text-muted-foreground">Completed Sales</div>
+                    </div>
+                  </>
+                )}
+>>>>>>> Stashed changes
               </div>
 
               {/* Quick Actions */}
               <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
                 <h2 className="text-xl font-semibold mb-4">Quick Actions</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+<<<<<<< Updated upstream
                   <button className="rounded-lg border border-border bg-background p-4 text-left hover:bg-primary/5 hover:border-primary/30 transition-all">
                     <div className="text-2xl mb-2">📅</div>
                     <div className="font-semibold">Book Appointment</div>
@@ -123,6 +224,60 @@ export default function DashboardPage() {
                     <div className="font-semibold">Donate</div>
                     <div className="text-sm text-muted-foreground">Support animal welfare</div>
                   </button>
+=======
+                  {isPetOwner && (
+                    <>
+                      <button onClick={() => router.push("/dashboard/appointments/book")} className="rounded-lg border border-border bg-background p-4 text-left hover:bg-primary/5 hover:border-primary/30 transition-all">
+                        <div className="text-2xl mb-2">📅</div>
+                        <div className="font-semibold">Book Appointment</div>
+                        <div className="text-sm text-muted-foreground">Schedule a vet visit</div>
+                      </button>
+                      <button onClick={() => router.push("/dashboard/pets/register")} className="rounded-lg border border-border bg-background p-4 text-left hover:bg-primary/5 hover:border-primary/30 transition-all">
+                        <div className="text-2xl mb-2">🐾</div>
+                        <div className="font-semibold">Add Pet</div>
+                        <div className="text-sm text-muted-foreground">Register a new pet</div>
+                      </button>
+                      <button onClick={() => router.push("/dashboard/lost-found/report")} className="rounded-lg border border-border bg-background p-4 text-left hover:bg-primary/5 hover:border-primary/30 transition-all">
+                        <div className="text-2xl mb-2">🆘</div>
+                        <div className="font-semibold">Report Lost Pet</div>
+                        <div className="text-sm text-muted-foreground">Help find missing pets</div>
+                      </button>
+                      <button onClick={() => router.push("/dashboard/donations")} className="rounded-lg border border-border bg-background p-4 text-left hover:bg-primary/5 hover:border-primary/30 transition-all">
+                        <div className="text-2xl mb-2">❤️</div>
+                        <div className="font-semibold">Donate</div>
+                        <div className="text-sm text-muted-foreground">Support animal welfare</div>
+                      </button>
+                    </>
+                  )}
+                  {isShelter && (
+                    <>
+                      <button onClick={() => router.push("/dashboard/donations/create")} className="rounded-lg border border-border bg-background p-4 text-left hover:bg-primary/5 hover:border-primary/30 transition-all">
+                        <div className="text-2xl mb-2">📣</div>
+                        <div className="font-semibold">Create Campaign</div>
+                        <div className="text-sm text-muted-foreground">Start a new donation gig</div>
+                      </button>
+                      <button onClick={() => router.push("/dashboard/donations")} className="rounded-lg border border-border bg-background p-4 text-left hover:bg-primary/5 hover:border-primary/30 transition-all">
+                        <div className="text-2xl mb-2">💰</div>
+                        <div className="font-semibold">My Campaigns</div>
+                        <div className="text-sm text-muted-foreground">Manage your donation gigs</div>
+                      </button>
+                    </>
+                  )}
+                  {isPharmacy && (
+                    <>
+                      <button onClick={() => router.push("/dashboard/pharmacy")} className="rounded-lg border border-border bg-background p-4 text-left hover:bg-primary/5 hover:border-primary/30 transition-all">
+                        <div className="text-2xl mb-2">📋</div>
+                        <div className="font-semibold">Manage Orders</div>
+                        <div className="text-sm text-muted-foreground">View pending medicine requests</div>
+                      </button>
+                      <button onClick={() => router.push("/dashboard/settings")} className="rounded-lg border border-border bg-background p-4 text-left hover:bg-primary/5 hover:border-primary/30 transition-all">
+                        <div className="text-2xl mb-2">⚙️</div>
+                        <div className="font-semibold">Update Stock</div>
+                        <div className="text-sm text-muted-foreground">Manage medicine inventory</div>
+                      </button>
+                    </>
+                  )}
+>>>>>>> Stashed changes
                 </div>
               </div>
 
