@@ -1,6 +1,7 @@
 import mongoose, { Document, Schema, Model } from "mongoose";
 
 export interface ICharity extends Document {
+	ownerId: mongoose.Types.ObjectId;
 	name: string;
 	description: string;
 	goal: number;
@@ -14,6 +15,7 @@ export interface ICharity extends Document {
 }
 
 const charitySchema = new Schema({
+	ownerId: { type: Schema.Types.ObjectId, ref: "User", required: true },
 	name: { type: String, required: [true, "Charity name is required"], trim: true },
 	description: { type: String, required: [true, "Charity description is required"], trim: true },
 	image: {
