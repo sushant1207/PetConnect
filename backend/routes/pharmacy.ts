@@ -8,7 +8,8 @@ import {
 	createOrder,
 	getPharmacyOrders,
 	getUserOrders,
-	updateOrderStatus
+	updateOrderStatus,
+	getPharmacyStats
 } from "../controller/pharmacyController";
 import { authenticate } from "../utils/auth";
 
@@ -32,5 +33,8 @@ router.get("/orders/user", authenticate, getUserOrders);
 // Protected routes - pharmacy only
 router.get("/orders", authenticate, getPharmacyOrders);
 router.put("/orders/:id", authenticate, updateOrderStatus);
+
+// Pharmacy dashboard stats
+router.get("/stats", authenticate, getPharmacyStats);
 
 export default router;

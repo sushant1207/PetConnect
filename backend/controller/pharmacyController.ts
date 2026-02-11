@@ -6,7 +6,7 @@ import { AuthRequest } from "../utils/auth";
 // Pharmacy adds/creates a product
 export const createProduct = async (req: AuthRequest, res: Response): Promise<void> => {
 	try {
-		const { name, description, price, category, stock, images, featured } = req.body;
+		const { name, description, price, category, stock, images, featured, isActive } = req.body;
 
 		// Verify user is pharmacy/admin
 		if (req.user?.role !== "pharmacy" && req.user?.role !== "admin") {
@@ -21,7 +21,8 @@ export const createProduct = async (req: AuthRequest, res: Response): Promise<vo
 			category,
 			stock,
 			images: images || [],
-			featured: featured || false
+			featured: featured || false,
+			isActive: typeof isActive === "boolean" ? isActive : true
 		});
 
 		res.status(201).json({
@@ -43,7 +44,7 @@ export const createProduct = async (req: AuthRequest, res: Response): Promise<vo
 export const updateProduct = async (req: AuthRequest, res: Response): Promise<void> => {
 	try {
 		const { id } = req.params;
-		const { name, description, price, category, stock, images, featured } = req.body;
+		const { name, description, price, category, stock, images, featured, isActive } = req.body;
 
 		// Verify user is pharmacy/admin
 		if (req.user?.role !== "pharmacy" && req.user?.role !== "admin") {
@@ -51,11 +52,15 @@ export const updateProduct = async (req: AuthRequest, res: Response): Promise<vo
 			return;
 		}
 
-		const product = await Product.findByIdAndUpdate(
-			id,
-			{ name, description, price, category, stock, images, featured },
-			{ new: true, runValidators: true }
-		);
+		const updateData: any = { name, description, price, category, stock, images, featured };
+		if (typeof isActive === "boolean") {
+			updateData.isActive = isActive;
+		}
+
+		const product = await Product.findByIdAndUpdate(id, updateData, {
+			new: true,
+			runValidators: true
+		});
 
 		if (!product) {
 			res.status(404).json({
@@ -118,11 +123,15 @@ export const deleteProduct = async (req: AuthRequest, res: Response): Promise<vo
 // Get all products (for all users)
 export const getAllProducts = async (req: Request, res: Response): Promise<void> => {
 	try {
-		const { category, search, featured } = req.query;
+		const { category, search, featured, includeInactive } = req.query;
 
 		const filter: any = {};
 		if (category) filter.category = category;
 		if (featured === "true") filter.featured = true;
+		// By default, only return active products for public listing
+		if (includeInactive !== "true") {
+			filter.isActive = true;
+		}
 		if (search) {
 			filter.$or = [{ name: { $regex: search, $options: "i" } }, { description: { $regex: search, $options: "i" } }];
 		}
@@ -336,6 +345,44 @@ export const updateOrderStatus = async (req: AuthRequest, res: Response): Promis
 		res.status(500).json({
 			success: false,
 			message: "Failed to update order status",
+			error: error.message
+		});
+	}
+};
+
+// Get simple pharmacy stats for dashboard
+export const getPharmacyStats = async (req: AuthRequest, res: Response): Promise<void> => {
+	try {
+		// Verify user is pharmacy/admin
+		if (req.user?.role !== "pharmacy" && req.user?.role !== "admin") {
+			res.status(403).json({ message: "Access denied. Only pharmacy users can view stats" });
+			return;
+		}
+
+		const [activeOrders, completedOrders, activeProducts, totalStock] = await Promise.all([
+			Order.countDocuments({ status: { $in: ["pending", "processing"] } }),
+			Order.countDocuments({ status: "delivered" }),
+			Product.countDocuments({ isActive: true }),
+			Product.aggregate([
+				{ $match: { isActive: true } },
+				{ $group: { _id: null, totalStock: { $sum: "$stock" } } }
+			])
+		]);
+
+		const totalStockValue = totalStock[0]?.totalStock || 0;
+
+		res.status(200).json({
+			success: true,
+			activeOrders,
+			completedOrders,
+			activeProducts,
+			totalStock: totalStockValue
+		});
+	} catch (error: any) {
+		console.error("Error getting pharmacy stats:", error);
+		res.status(500).json({
+			success: false,
+			message: "Failed to get pharmacy stats",
 			error: error.message
 		});
 	}
