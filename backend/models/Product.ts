@@ -13,6 +13,7 @@ export interface IProduct extends Document {
 	stock: number;
 	images: ProductImage[];
 	featured: boolean;
+	isActive: boolean;
 	createdAt: Date;
 }
 
@@ -33,6 +34,7 @@ const productSchema = new Schema<IProduct>({
 		}
 	],
 	featured: { type: Boolean, default: false },
+	isActive: { type: Boolean, default: true },
 	createdAt: { type: Date, default: Date.now }
 });
 
