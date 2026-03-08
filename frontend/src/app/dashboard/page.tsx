@@ -20,9 +20,9 @@ export default function DashboardPage() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ totalRaised: 0, donationCount: 0, campaignCount: 0 });
+  const [pharmacyStats, setPharmacyStats] = useState({ activeOrders: 0, completedOrders: 0, activeProducts: 0 });
 
   useEffect(() => {
-    // Check if user is logged in
     const token = localStorage.getItem("token");
     const userData = localStorage.getItem("user");
 
@@ -37,6 +37,9 @@ export default function DashboardPage() {
       if (parsedUser.role === "shelter") {
         fetchShelterStats(token);
       }
+      if (parsedUser.role === "pharmacy") {
+        fetchPharmacyStats(token);
+      }
     } catch (error) {
       console.error("Error parsing user data:", error);
       router.push("/login");
@@ -44,6 +47,24 @@ export default function DashboardPage() {
       setLoading(false);
     }
   }, [router]);
+
+  const fetchPharmacyStats = async (token: string) => {
+    try {
+      const res = await fetch("http://localhost:5555/api/pharmacy/stats", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPharmacyStats({
+          activeOrders: data.activeOrders ?? 0,
+          completedOrders: data.completedOrders ?? 0,
+          activeProducts: data.activeProducts ?? 0,
+        });
+      }
+    } catch (err) {
+      console.error("Error fetching pharmacy stats:", err);
+    }
+  };
 
   const fetchShelterStats = async (token: string) => {
     try {
@@ -148,18 +169,18 @@ export default function DashboardPage() {
                   <>
                     <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
                       <div className="text-2xl mb-2">💊</div>
-                      <div className="text-2xl font-bold">0</div>
+                      <div className="text-2xl font-bold">{pharmacyStats.activeOrders}</div>
                       <div className="text-sm text-muted-foreground">Active Orders</div>
                     </div>
                     <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
                       <div className="text-2xl mb-2">📦</div>
-                      <div className="text-2xl font-bold">0</div>
-                      <div className="text-sm text-muted-foreground">Medicines in Stock</div>
+                      <div className="text-2xl font-bold">{pharmacyStats.activeProducts}</div>
+                      <div className="text-sm text-muted-foreground">Products</div>
                     </div>
                     <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
                       <div className="text-2xl mb-2">✅</div>
-                      <div className="text-2xl font-bold">0</div>
-                      <div className="text-sm text-muted-foreground">Completed Sales</div>
+                      <div className="text-2xl font-bold">{pharmacyStats.completedOrders}</div>
+                      <div className="text-sm text-muted-foreground">Completed Orders</div>
                     </div>
                   </>
                 )}
@@ -209,15 +230,20 @@ export default function DashboardPage() {
                   )}
                   {isPharmacy && (
                     <>
-                      <button onClick={() => router.push("/dashboard/pharmacy")} className="rounded-lg border border-border bg-background p-4 text-left hover:bg-primary/5 hover:border-primary/30 transition-all">
-                        <div className="text-2xl mb-2">📋</div>
-                        <div className="font-semibold">Manage Orders</div>
-                        <div className="text-sm text-muted-foreground">View pending medicine requests</div>
+                      <button onClick={() => router.push("/dashboard/pharmacy/products")} className="rounded-lg border border-border bg-background p-4 text-left hover:bg-primary/5 hover:border-primary/30 transition-all">
+                        <div className="text-2xl mb-2">💊</div>
+                        <div className="font-semibold">Products</div>
+                        <div className="text-sm text-muted-foreground">Add and manage products</div>
+                      </button>
+                      <button onClick={() => router.push("/dashboard/pharmacy/orders")} className="rounded-lg border border-border bg-background p-4 text-left hover:bg-primary/5 hover:border-primary/30 transition-all">
+                        <div className="text-2xl mb-2">📦</div>
+                        <div className="font-semibold">Orders</div>
+                        <div className="text-sm text-muted-foreground">View and fulfill orders</div>
                       </button>
                       <button onClick={() => router.push("/dashboard/settings")} className="rounded-lg border border-border bg-background p-4 text-left hover:bg-primary/5 hover:border-primary/30 transition-all">
                         <div className="text-2xl mb-2">⚙️</div>
-                        <div className="font-semibold">Update Stock</div>
-                        <div className="text-sm text-muted-foreground">Manage medicine inventory</div>
+                        <div className="font-semibold">Settings</div>
+                        <div className="text-sm text-muted-foreground">Account settings</div>
                       </button>
                     </>
                   )}

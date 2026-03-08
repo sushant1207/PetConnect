@@ -53,6 +53,7 @@ export default function BookAppointmentPage() {
     locationPreference: "clinic" as "clinic" | "home_visit",
     address: "",
     notes: "",
+    paymentMethod: "esewa" as "esewa" | "pay_at_clinic",
   });
 
   useEffect(() => {
@@ -153,24 +154,61 @@ export default function BookAppointmentPage() {
       const token = localStorage.getItem("token");
       const dateStr = selectedDate instanceof Date ? selectedDate.toISOString().split("T")[0] : "";
 
+      const payload = {
+        user: user?._id,
+        doctor: selectedDoctor._id,
+        date: dateStr,
+        timeSlot: selectedSlot,
+        petName: selectedPet.name,
+        petType: selectedPet.species,
+        reason: formData.reason,
+        locationPreference: formData.locationPreference,
+        address: formData.locationPreference === "home_visit" ? formData.address : undefined,
+        notes: formData.notes,
+      };
+
+      if (formData.paymentMethod === "esewa") {
+        const response = await fetch("http://localhost:5555/api/appointments/pay/esewa", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.message || data.error || "Failed to initiate payment");
+        }
+
+        if (data.esewaData) {
+          const form = document.createElement("form");
+          form.setAttribute("method", "POST");
+          form.setAttribute("action", "https://rc-epay.esewa.com.np/api/epay/main/v2/form");
+
+          for (const key in data.esewaData) {
+            const input = document.createElement("input");
+            input.setAttribute("type", "hidden");
+            input.setAttribute("name", key);
+            input.setAttribute("value", String(data.esewaData[key]));
+            form.appendChild(input);
+          }
+
+          document.body.appendChild(form);
+          form.submit();
+          return;
+        }
+      }
+
       const response = await fetch("http://localhost:5555/api/appointments", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          user: user?._id,
-          doctor: selectedDoctor._id,
-          date: dateStr,
-          timeSlot: selectedSlot,
-          petName: selectedPet.name,
-          petType: selectedPet.species,
-          reason: formData.reason,
-          locationPreference: formData.locationPreference,
-          address: formData.locationPreference === "home_visit" ? formData.address : undefined,
-          notes: formData.notes,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
@@ -372,6 +410,38 @@ export default function BookAppointmentPage() {
                     className="w-full rounded-lg border border-input bg-background px-4 py-3 outline-none focus:ring-2 focus:ring-primary/50"
                     placeholder="Any additional information..."
                   />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium">Payment Method *</label>
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="paymentMethod"
+                        checked={formData.paymentMethod === "esewa"}
+                        onChange={() => setFormData({ ...formData, paymentMethod: "esewa" })}
+                        className="rounded-full border-input"
+                      />
+                      <span className="font-medium">Pay with eSewa</span>
+                      <span className="text-xs text-muted-foreground">(Rs. {selectedDoctor?.bookingFee || 0})</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="paymentMethod"
+                        checked={formData.paymentMethod === "pay_at_clinic"}
+                        onChange={() => setFormData({ ...formData, paymentMethod: "pay_at_clinic" })}
+                        className="rounded-full border-input"
+                      />
+                      <span>Pay at Clinic</span>
+                    </label>
+                  </div>
+                  {formData.paymentMethod === "esewa" && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      You will be redirected to eSewa to complete payment securely.
+                    </p>
+                  )}
                 </div>
               </div>
             )}

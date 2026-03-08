@@ -52,7 +52,8 @@ const getMenuItems = (role: string) => {
   if (role === "pharmacy") {
     return [
       ...baseItems,
-      { icon: "💊", label: "Orders", href: "/dashboard/pharmacy" },
+      { icon: "💊", label: "Products", href: "/dashboard/pharmacy/products" },
+      { icon: "📦", label: "Orders", href: "/dashboard/pharmacy/orders" },
       { icon: "⚙️", label: "Settings", href: "/dashboard/settings" },
     ];
   }
