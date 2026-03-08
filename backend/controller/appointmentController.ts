@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import Appointment from "../models/Appointment";
 import Doctor from "../models/Doctor";
 import { DayOfWeek, generateSlotsForDay, getDayOfWeek, parseAvailabilityEntry, slotOverlaps } from "../utils/slotValidation";
+import { buildEsewaFormData } from "../utils/esewa";
 
 export async function getAvailability(req: Request, res: Response) {
 	try {
@@ -157,6 +158,115 @@ export async function getAppointmentsByUser(req: Request, res: Response) {
 	} catch (error: any) {
 		console.error("Get appointments error:", error);
 		return res.status(500).json({ message: "Failed to fetch appointments" });
+	}
+}
+
+export async function initiateAppointmentPayment(req: Request, res: Response) {
+	try {
+		const {
+			user,
+			doctor: doctorId,
+			date,
+			timeSlot,
+			petName,
+			petType,
+			reason,
+			locationPreference,
+			address,
+			notes,
+			petId
+		} = req.body;
+
+		if (!user || !doctorId || !date || !timeSlot || !petName || !petType || !reason || !locationPreference) {
+			return res.status(400).json({ message: "Missing required fields" });
+		}
+
+		const doctor = await Doctor.findById(doctorId).select("availability appointmentDuration bookingFee");
+		if (!doctor) return res.status(404).json({ message: "Doctor not found" });
+
+		const selectedDate = new Date(date);
+		if (isNaN(selectedDate.getTime())) return res.status(400).json({ message: "Invalid date" });
+		const day: DayOfWeek = getDayOfWeek(selectedDate);
+
+		const availability = doctor.availability.map(parseAvailabilityEntry).find((e) => e && e.day === day);
+		if (!availability) return res.status(400).json({ message: "Doctor not available on selected day" });
+
+		const generated = generateSlotsForDay(selectedDate, availability.startHour, availability.endHour, doctor.appointmentDuration || 30);
+		if (!generated.includes(timeSlot)) {
+			return res.status(400).json({ message: "Requested timeSlot is not within doctor's availability" });
+		}
+
+		const conflict = await Appointment.findOne({
+			doctor: doctorId,
+			date: {
+				$gte: new Date(new Date(date).setHours(0, 0, 0, 0)),
+				$lte: new Date(new Date(date).setHours(23, 59, 59, 999))
+			},
+			$or: [{ timeSlot }, { timeSlot: { $in: generated.filter((slot) => slotOverlaps(slot, timeSlot)) } }]
+		});
+		if (conflict) return res.status(409).json({ message: "Selected timeSlot is already booked" });
+
+		const amount = doctor.bookingFee || 0;
+		const created = await Appointment.create({
+			user,
+			doctor: doctorId,
+			date: selectedDate,
+			timeSlot,
+			petName,
+			petType,
+			reason,
+			locationPreference,
+			address,
+			notes,
+			status: "pending",
+			appointmentDuration: doctor.appointmentDuration || 30,
+			payment: {
+				status: "pending",
+				amount,
+				method: "esewa"
+			}
+		});
+
+		const esewaData = buildEsewaFormData({
+			amount,
+			transactionUuid: String(created._id),
+			successPath: `/dashboard/appointments/payment/success?appointmentId=${created._id}`,
+			failurePath: `/dashboard/appointments/payment/failure?appointmentId=${created._id}`,
+		});
+
+		return res.status(201).json({
+			message: "Appointment created, redirect to eSewa",
+			appointmentId: created._id,
+			esewaData,
+		});
+	} catch (error: any) {
+		console.error("Initiate appointment payment error:", error);
+		return res.status(500).json({ error: error.message || "Failed to initiate payment" });
+	}
+}
+
+export async function verifyAppointmentPayment(req: Request, res: Response) {
+	try {
+		const { appointmentId, status, refId } = req.body;
+
+		const appointment = await Appointment.findById(appointmentId);
+		if (!appointment) return res.status(404).json({ message: "Appointment not found" });
+
+		if (status === "COMPLETE" || status === "success") {
+			appointment.payment.status = "paid";
+			appointment.payment.method = "esewa";
+			appointment.payment.transactionId = refId || (req.body as any).transaction_code;
+			appointment.payment.paidAt = new Date();
+			appointment.status = "confirmed";
+			await appointment.save();
+		} else {
+			appointment.payment.status = "pending";
+			await appointment.save();
+		}
+
+		return res.status(200).json({ message: "Payment verified", appointment });
+	} catch (error: any) {
+		return res.status(500).json({ error: error.message || "Failed to verify payment" });
 	}
 }
 

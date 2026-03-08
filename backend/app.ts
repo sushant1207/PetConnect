@@ -7,6 +7,7 @@ import petRoutes from "./routes/pets";
 import doctorRoutes from "./routes/doctors";
 import lostFoundRoutes from "./routes/lostFound";
 import charityRoutes from "./routes/charity";
+import pharmacyRoutes from "./routes/pharmacy";
 
 /**
  * @swagger
@@ -216,6 +217,7 @@ app.use("/api/pets", petRoutes);
 app.use("/api/doctors", doctorRoutes);
 app.use("/api/lost-found", lostFoundRoutes);
 app.use("/api/charity", charityRoutes);
+app.use("/api/pharmacy", pharmacyRoutes);
 
 // Swagger setup
 const swaggerSpec = swaggerJSDoc({
