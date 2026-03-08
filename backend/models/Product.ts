@@ -13,6 +13,8 @@ export interface IProduct extends Document {
 	stock: number;
 	images: ProductImage[];
 	featured: boolean;
+	isActive: boolean;
+	pharmacyId?: mongoose.Types.ObjectId;
 	createdAt: Date;
 }
 
@@ -33,6 +35,8 @@ const productSchema = new Schema<IProduct>({
 		}
 	],
 	featured: { type: Boolean, default: false },
+	isActive: { type: Boolean, default: true },
+	pharmacyId: { type: Schema.Types.ObjectId, ref: "User" },
 	createdAt: { type: Date, default: Date.now }
 });
 

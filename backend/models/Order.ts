@@ -21,6 +21,7 @@ interface ShippingAddress {
 export interface IOrder extends Document {
 	userId: mongoose.Types.ObjectId;
 	userName: string;
+	pharmacyId?: mongoose.Types.ObjectId;
 	items: OrderItem[];
 	totalAmount: number;
 	status: string;
@@ -37,6 +38,7 @@ const OrderSchema: Schema = new Schema(
 	{
 		userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
 		userName: { type: String, required: true },
+		pharmacyId: { type: Schema.Types.ObjectId, ref: "User" },
 		items: [
 			{
 				productId: { type: Schema.Types.ObjectId, ref: "Product", required: true },
