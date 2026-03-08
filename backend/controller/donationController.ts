@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import Donation from "../models/Donation";
 import { Charity } from "../models/Charity";
 import { AuthRequest } from "../utils/auth";
-import crypto from "crypto";
+import { buildEsewaFormData } from "../utils/esewa";
 
 export async function initiateDonation(req: AuthRequest, res: Response) {
 	try {
@@ -24,27 +24,17 @@ export async function initiateDonation(req: AuthRequest, res: Response) {
 			paymentMethod: paymentMethod || "esewa"
 		});
 
-		// For eSewa, in a real app we'd generate the signed message here
-		// For this demo, we'll return the donation ID as the product code
-		
+		const esewaData = buildEsewaFormData({
+			amount: Number(amount),
+			transactionUuid: String(donation._id),
+			successPath: `/dashboard/donations/success?donationId=${donation._id}`,
+			failurePath: `/dashboard/donations/failure?donationId=${donation._id}`,
+		});
+
 		return res.status(201).json({
 			message: "Donation initiated",
 			donationId: donation._id,
-			// Simulated eSewa form data
-			esewaData: {
-				amount: amount,
-				tax_amount: 0,
-				total_amount: amount,
-				transaction_uuid: donation._id,
-				product_code: "EPAYTEST",
-				product_service_charge: 0,
-				product_delivery_charge: 0,
-				success_url: `http://localhost:3000/dashboard/donations/success?donationId=${donation._id}`,
-				failure_url: `http://localhost:3000/dashboard/donations/failure?donationId=${donation._id}`,
-				signed_field_names: "total_amount,transaction_uuid,product_code",
-				// Mock signature for demo purposes
-				signature: "mock_signature"
-			}
+			esewaData,
 		});
 	} catch (error: any) {
 		return res.status(500).json({ message: error.message || "Failed to initiate donation" });
