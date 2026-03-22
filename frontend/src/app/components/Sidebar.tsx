@@ -18,7 +18,7 @@ interface SidebarProps {
 
 const getMenuItems = (role: string) => {
   const baseItems = [
-    { icon: "📊", label: "Dashboard", href: role === "veterinarian" ? "/dashboard/vet" : "/dashboard" },
+    { icon: "📊", label: "Dashboard", href: role === "veterinarian" ? "/dashboard/vet" : role === "admin" ? "/admin/dashboard" : "/dashboard" },
   ];
 
   if (role === "pet_owner") {
@@ -58,6 +58,16 @@ const getMenuItems = (role: string) => {
     ];
   }
 
+  if (role === "admin") {
+    return [
+      ...baseItems,
+      { icon: "👥", label: "Users", href: "/admin/users" },
+      { icon: "🩺", label: "Vets", href: "/admin/vets" },
+      { icon: "💊", label: "Pharmacies", href: "/admin/pharmacies" },
+      { icon: "⚙️", label: "Settings", href: "/admin/settings" },
+    ];
+  }
+
   return baseItems;
 };
 
@@ -66,6 +76,7 @@ const roleLabels: Record<string, string> = {
   veterinarian: "Veterinarian",
   shelter: "Shelter & NGO",
   pharmacy: "Pharmacy",
+  admin: "Administrator",
 };
 
 export function Sidebar({ user }: SidebarProps) {
@@ -83,11 +94,11 @@ export function Sidebar({ user }: SidebarProps) {
       <div className="flex h-full flex-col">
         {/* Logo/Header */}
         <div className="border-b border-border p-6">
-          <Link href={user.role === "veterinarian" ? "/dashboard/vet" : "/dashboard"} className="flex items-center gap-2">
+          <Link href={user.role === "veterinarian" ? "/dashboard/vet" : user.role === "admin" ? "/admin/dashboard" : "/dashboard"} className="flex items-center gap-2">
             <div className="text-2xl">🐾</div>
             <div>
               <div className="font-bold text-lg">PetConnect</div>
-              <div className="text-xs text-muted-foreground">Dashboard</div>
+              <div className="text-xs text-muted-foreground">{user.role === "admin" ? "Admin Panel" : "Dashboard"}</div>
             </div>
           </Link>
         </div>
