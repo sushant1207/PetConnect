@@ -175,6 +175,27 @@ export default function VetSettingsPage() {
         throw new Error(data.message || "Failed to update settings");
       }
 
+      // Also update personal info via profile endpoint
+      const profileResponse = await fetch(`http://localhost:5555/api/auth/profile`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          firstName: user.firstName,
+          lastName: user.lastName,
+        }),
+      });
+
+      if (profileResponse.ok) {
+        const profileData = await profileResponse.json();
+        if (profileData.user) {
+          setUser(profileData.user);
+          localStorage.setItem("user", JSON.stringify(profileData.user));
+        }
+      }
+
       // Refresh doctor data
       if (data.doctor) {
         setDoctor(data.doctor);
@@ -238,6 +259,40 @@ export default function VetSettingsPage() {
                 {success}
               </div>
             )}
+
+            {/* Personal Information */}
+            <div className="rounded-lg border border-border bg-card p-6">
+              <h2 className="text-xl font-semibold mb-4">Personal Information</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="mb-2 block text-sm font-medium">First Name</label>
+                  <input
+                    type="text"
+                    value={user.firstName || ""}
+                    onChange={(e) => setUser({ ...user, firstName: e.target.value })}
+                    className="w-full rounded-lg border border-input bg-background px-4 py-3 outline-none focus:ring-2 focus:ring-primary/50"
+                  />
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm font-medium">Last Name</label>
+                  <input
+                    type="text"
+                    value={user.lastName || ""}
+                    onChange={(e) => setUser({ ...user, lastName: e.target.value })}
+                    className="w-full rounded-lg border border-input bg-background px-4 py-3 outline-none focus:ring-2 focus:ring-primary/50"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="mb-2 block text-sm font-medium">Email Address</label>
+                  <input
+                    type="email"
+                    value={user.email}
+                    disabled
+                    className="w-full rounded-lg border border-input bg-muted px-4 py-3 outline-none text-muted-foreground cursor-not-allowed"
+                  />
+                </div>
+              </div>
+            </div>
 
             {/* Availability Settings */}
             <div className="rounded-lg border border-border bg-card p-6">
