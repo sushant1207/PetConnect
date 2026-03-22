@@ -3,7 +3,7 @@ import crypto from "crypto";
 // eSewa UAT credentials - for production, use env vars
 const ESEWA_SECRET = process.env.ESEWA_SECRET || "8gBm/:&EnhH.1/q";
 const ESEWA_PRODUCT_CODE = process.env.ESEWA_PRODUCT_CODE || "EPAYTEST";
-const FRONTEND_BASE_URL = process.env.FRONTEND_BASE_URL || "http://localhost:3002";
+const FRONTEND_BASE_URL = process.env.FRONTEND_BASE_URL || "http://localhost:3001";
 
 /**
  * Generate HMAC-SHA256 signature for eSewa v2 form.
