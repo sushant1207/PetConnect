@@ -8,6 +8,7 @@ import doctorRoutes from "./routes/doctors";
 import lostFoundRoutes from "./routes/lostFound";
 import charityRoutes from "./routes/charity";
 import pharmacyRoutes from "./routes/pharmacy";
+import adminRoutes from "./routes/admin";
 
 /**
  * @swagger
@@ -218,6 +219,7 @@ app.use("/api/doctors", doctorRoutes);
 app.use("/api/lost-found", lostFoundRoutes);
 app.use("/api/charity", charityRoutes);
 app.use("/api/pharmacy", pharmacyRoutes);
+app.use("/api/admin", adminRoutes);
 
 // Swagger setup
 const swaggerSpec = swaggerJSDoc({
