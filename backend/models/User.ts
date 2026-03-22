@@ -41,6 +41,8 @@ export interface IUser extends Document {
 	isOnline: boolean;
 	lastAuthMethod?: string;
 	uniqueSessionId?: string;
+	lastLoginIp?: string;
+	lastLoginDate?: Date;
 }
 
 const UserSchema: Schema = new Schema(
@@ -96,7 +98,9 @@ const UserSchema: Schema = new Schema(
 		lastActive: { type: Date, default: null },
 		isOnline: { type: Boolean, default: false },
 		lastAuthMethod: { type: String, enum: ["password", "google"], default: "password" },
-		uniqueSessionId: { type: String, default: null }
+		uniqueSessionId: { type: String, default: null },
+		lastLoginIp: { type: String, default: null },
+		lastLoginDate: { type: Date, default: null }
 	},
 	{
 		timestamps: true,
