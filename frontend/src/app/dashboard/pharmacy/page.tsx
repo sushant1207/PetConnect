@@ -20,6 +20,7 @@ interface Product {
 	price: number;
 	category: string;
 	stock: number;
+	images?: string[];
 	pharmacyId?: { _id: string; firstName: string; lastName: string };
 }
 
@@ -37,8 +38,8 @@ export default function PharmacyPage() {
 	const [user, setUser] = useState<User | null>(null);
 	const [vendors, setVendors] = useState<Vendor[]>([]);
 	const [loading, setLoading] = useState(true);
+	
 	const [cart, setCart] = useState<CartItem[]>([]);
-	const [checkoutVendor, setCheckoutVendor] = useState<Vendor | null>(null);
 	const [checkoutOpen, setCheckoutOpen] = useState(false);
 	const [shippingAddress, setShippingAddress] = useState({
 		firstName: "",
@@ -48,6 +49,14 @@ export default function PharmacyPage() {
 		phone: "",
 	});
 	const [paying, setPaying] = useState(false);
+
+	// Filters, Search, Sort, Pagination
+	const [searchQuery, setSearchQuery] = useState("");
+	const [categoryFilter, setCategoryFilter] = useState("all");
+	const [maxPrice, setMaxPrice] = useState<number | "">("");
+	const [sortOrder, setSortOrder] = useState<"default" | "price_asc" | "price_desc" | "name">("default");
+	const [currentPage, setCurrentPage] = useState(1);
+	const ITEMS_PER_PAGE = 12;
 
 	useEffect(() => {
 		const token = localStorage.getItem("token");
@@ -93,10 +102,9 @@ export default function PharmacyPage() {
 			}
 			return [...prev, { ...product, quantity: 1 }];
 		});
-		setCheckoutVendor(vendor);
 	};
 
-	const updateQuantity = (productId: string, delta: number) => {
+	const updateCartQuantity = (productId: string, delta: number) => {
 		setCart((prev) => {
 			const item = prev.find((p) => p._id === productId);
 			if (!item) return prev;
@@ -168,173 +176,341 @@ export default function PharmacyPage() {
 		);
 	}
 
-	// Pharmacy role: redirect to their dashboard
 	if (user.role === "pharmacy") {
 		router.push("/dashboard");
 		return null;
 	}
 
+	// 1. Flatten products
+	const allProducts = vendors.flatMap(v => 
+		v.products.map(p => ({ ...p, vendorName: `${v.pharmacy.firstName} ${v.pharmacy.lastName}`, vendorObj: v }))
+	);
+
+	const uniqueCategories = Array.from(new Set(allProducts.map(p => p.category)));
+
+	// 2. Filter
+	let processed = allProducts.filter(p => {
+		if (categoryFilter !== "all" && p.category !== categoryFilter) return false;
+		if (maxPrice !== "" && p.price > Number(maxPrice)) return false;
+		if (searchQuery.trim() !== "") {
+			const term = searchQuery.toLowerCase();
+			return p.name.toLowerCase().includes(term) || 
+				   p.description.toLowerCase().includes(term) ||
+				   p.vendorName.toLowerCase().includes(term) ||
+				   p.category.toLowerCase().includes(term);
+		}
+		return true;
+	});
+
+	// 3. Sort
+	if (sortOrder === "price_asc") processed.sort((a, b) => a.price - b.price);
+	else if (sortOrder === "price_desc") processed.sort((a, b) => b.price - a.price);
+	else if (sortOrder === "name") processed.sort((a, b) => a.name.localeCompare(b.name));
+
+	// 4. Pagination
+	const totalPages = Math.max(1, Math.ceil(processed.length / ITEMS_PER_PAGE));
+	const safeCurrentPage = Math.min(currentPage, totalPages);
+	if (currentPage !== safeCurrentPage && safeCurrentPage > 0) {
+		setCurrentPage(safeCurrentPage);
+	}
+
+	const startIndex = (safeCurrentPage - 1) * ITEMS_PER_PAGE;
+	const paginatedProducts = processed.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
 	return (
 		<div className="flex h-screen overflow-hidden bg-background">
 			<Sidebar user={user} />
 			<main className="flex-1 overflow-y-auto p-6 md:p-8 lg:p-12">
-				<div className="max-w-6xl mx-auto">
-					<h1 className="text-3xl font-bold mb-2">Pharmacy</h1>
-					<p className="text-muted-foreground mb-8">Browse products from pharmacy vendors</p>
+				<div className="max-w-7xl mx-auto">
+					{/* Header */}
+					<div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+						<div>
+							<h1 className="text-3xl font-bold mb-2">Pharmacy</h1>
+							<p className="text-muted-foreground">Browse high-quality products from trusted pharmacy vendors.</p>
+						</div>
+					</div>
 
-					{/* Cart summary */}
-					{cart.length > 0 && (
-						<div className="fixed top-4 right-8 z-10 rounded-xl border border-border bg-card p-4 shadow-lg min-w-[200px]">
-							<p className="font-semibold mb-2">Cart ({cart.length} items)</p>
-							<p className="text-xl font-bold text-primary">Rs. {cartTotal}</p>
-							<button
-								onClick={() => setCheckoutOpen(true)}
-								className="mt-2 w-full rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+					{/* Filters & Search Bar */}
+					<div className="bg-card border border-border rounded-xl p-4 shadow-sm mb-8 flex flex-col lg:flex-row gap-4 items-center justify-between">
+						<div className="relative w-full lg:w-1/3">
+							<span className="absolute inset-y-0 left-0 flex items-center pl-3 text-muted-foreground">🔍</span>
+							<input
+								type="text"
+								placeholder="Search products, vendors..."
+								value={searchQuery}
+								onChange={(e) => { setSearchQuery(e.target.value); setCurrentPage(1); }}
+								className="w-full rounded-lg border border-input bg-background pl-10 pr-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+							/>
+						</div>
+						
+						<div className="flex flex-col sm:flex-row w-full lg:w-auto gap-3">
+							<select
+								value={categoryFilter}
+								onChange={(e) => { setCategoryFilter(e.target.value); setCurrentPage(1); }}
+								className="rounded-lg border border-input bg-background px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/50"
 							>
-								Checkout
-							</button>
-						</div>
-					)}
+								<option value="all">All Categories</option>
+								{uniqueCategories.map(c => <option key={c} value={c}>{c}</option>)}
+							</select>
+							
+							<div className="relative">
+								<span className="absolute inset-y-0 left-0 flex items-center pl-3 text-muted-foreground text-sm font-medium">Max Rs.</span>
+								<input 
+									type="number"
+									min="0"
+									placeholder="Any Price"
+									value={maxPrice}
+									onChange={(e) => { setMaxPrice(e.target.value === "" ? "" : Number(e.target.value)); setCurrentPage(1); }}
+									className="w-full sm:w-32 rounded-lg border border-input bg-background pl-16 pr-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/50"
+								/>
+							</div>
 
-					{vendors.length === 0 ? (
-						<div className="rounded-xl border border-border bg-card p-12 text-center">
-							<p className="text-muted-foreground">No pharmacy vendors with products yet</p>
-							<p className="text-sm text-muted-foreground mt-2">
-								Pharmacies can add products from their dashboard
-							</p>
+							<select
+								value={sortOrder}
+								onChange={(e) => { setSortOrder(e.target.value as any); setCurrentPage(1); }}
+								className="rounded-lg border border-input bg-background px-4 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-primary/50"
+							>
+								<option value="default">Sort by: Default</option>
+								<option value="price_asc">Price: Low to High</option>
+								<option value="price_desc">Price: High to Low</option>
+								<option value="name">Name: A to Z</option>
+							</select>
 						</div>
-					) : (
-						<div className="space-y-10">
-							{vendors.map((vendor) => (
-								<div key={vendor.pharmacy._id} className="rounded-xl border border-border bg-card p-6">
-									<h2 className="text-xl font-semibold mb-4">
-										{vendor.pharmacy.firstName} {vendor.pharmacy.lastName}
-									</h2>
-									<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-										{vendor.products.map((p) => (
-											<div
-												key={p._id}
-												className="rounded-lg border border-border bg-background p-4"
-											>
-												<h3 className="font-semibold">{p.name}</h3>
-												<p className="text-sm text-muted-foreground">{p.category}</p>
-												<p className="text-lg font-bold text-primary mt-1">Rs. {p.price}</p>
-												<p className="text-xs text-muted-foreground">Stock: {p.stock}</p>
-												<button
-													onClick={() => addToCart(p, vendor)}
-													disabled={p.stock === 0}
-													className="mt-3 w-full rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-												>
-													Add to Cart
-												</button>
+					</div>
+
+					<div className="flex flex-col xl:flex-row gap-8 items-start">
+						
+						{/* Products Grid */}
+						<div className="flex-1 w-full">
+							{paginatedProducts.length === 0 ? (
+								<div className="rounded-2xl border border-dashed border-border bg-card/50 p-16 text-center">
+									<div className="text-5xl mb-4 opacity-75">📦</div>
+									<h3 className="text-xl font-semibold mb-2">No products found</h3>
+									<p className="text-muted-foreground">Try adjusting your filters or search terms.</p>
+								</div>
+							) : (
+								<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+									{paginatedProducts.map((p) => (
+										<div
+											key={p._id}
+											className="rounded-2xl border border-border bg-card shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col group"
+										>
+											<div className="h-40 bg-muted/30 flex items-center justify-center p-4 relative overflow-hidden">
+												{p.images && p.images.length > 0 ? (
+													<img src={`http://localhost:5555${p.images[0]}`} alt={p.name} className="w-full h-full object-cover rounded-t-xl group-hover:scale-105 transition-transform duration-300" />
+												) : (
+													<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground/30"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg>
+												)}
+												<span className="absolute top-3 right-3 bg-background/90 backdrop-blur border border-border text-xs font-semibold px-2 py-1 rounded-md text-foreground shadow-sm">
+													{p.category}
+												</span>
 											</div>
+											<div className="p-5 flex-1 flex flex-col">
+												<div className="mb-1 text-xs font-medium text-primary line-clamp-1">{p.vendorName}</div>
+												<h3 className="font-bold text-lg leading-tight mb-2 line-clamp-2">{p.name}</h3>
+												<p className="text-sm text-muted-foreground line-clamp-2 mb-4 flex-1">{p.description}</p>
+												
+												<div className="flex items-end justify-between mt-auto pt-4 border-t border-border/50">
+													<div>
+														<p className="text-2xl font-black text-foreground">Rs. {p.price}</p>
+														<p className={`text-xs mt-1 font-medium ${p.stock > 0 ? "text-green-600" : "text-destructive"}`}>
+															{p.stock > 0 ? `${p.stock} in stock` : "Out of stock"}
+														</p>
+													</div>
+													<button
+														onClick={() => addToCart(p, p.vendorObj)}
+														disabled={p.stock === 0}
+														className="rounded-lg bg-primary h-10 w-10 flex items-center justify-center hover:bg-primary/90 disabled:opacity-50 disabled:bg-muted disabled:text-muted-foreground transition-colors"
+														title="Add to Cart"
+													>
+														<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-primary-foreground"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+													</button>
+												</div>
+											</div>
+										</div>
+									))}
+								</div>
+							)}
+
+							{/* Pagination Controls */}
+							{totalPages > 1 && (
+								<div className="flex justify-center items-center gap-2 bg-card border border-border p-2 rounded-xl w-fit mx-auto shadow-sm">
+									<button
+										onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+										disabled={safeCurrentPage === 1}
+										className="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-primary/10 disabled:opacity-50 disabled:hover:bg-transparent"
+									>
+										Previous
+									</button>
+									<div className="flex items-center gap-1 px-2">
+										{Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+											<button
+												key={pageNum}
+												onClick={() => setCurrentPage(pageNum)}
+												className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
+													safeCurrentPage === pageNum
+														? "bg-primary text-primary-foreground"
+														: "hover:bg-primary/10 text-muted-foreground hover:text-foreground"
+												}`}
+											>
+												{pageNum}
+											</button>
 										))}
 									</div>
+									<button
+										onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+										disabled={safeCurrentPage === totalPages}
+										className="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-primary/10 disabled:opacity-50 disabled:hover:bg-transparent"
+									>
+										Next
+									</button>
 								</div>
-							))}
+							)}
 						</div>
-					)}
+
+						{/* Cart Sidebar */}
+						{cart.length > 0 && (
+							<div className="w-full xl:w-80 rounded-2xl border border-border bg-card shadow-lg shrink-0 sticky top-6 overflow-hidden flex flex-col max-h-[calc(100vh-6rem)]">
+								<div className="p-5 border-b border-border bg-muted/30">
+									<h2 className="text-xl font-bold flex items-center justify-between">
+										Your Cart
+										<span className="bg-primary text-primary-foreground text-sm px-2.5 py-0.5 rounded-full">{cart.reduce((s, i) => s + i.quantity, 0)}</span>
+									</h2>
+								</div>
+								
+								<div className="overflow-y-auto p-5 flex-1 space-y-4 min-h-[150px]">
+									{cart.map((item) => (
+										<div key={item._id} className="flex gap-3 items-start">
+											<div className="w-12 h-12 bg-muted/50 rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
+												{item.images && item.images.length > 0 ? (
+													<img src={`http://localhost:5555${item.images[0]}`} alt={item.name} className="w-full h-full object-cover" />
+												) : (
+													<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground/50"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg>
+												)}
+											</div>
+											<div className="flex-1 min-w-0">
+												<h4 className="font-semibold text-sm leading-tight truncate">{item.name}</h4>
+												<div className="text-primary font-bold text-sm mt-1">Rs. {item.price}</div>
+												<div className="flex items-center gap-2 mt-2">
+													<button onClick={() => updateCartQuantity(item._id, -1)} className="w-6 h-6 rounded bg-muted flex items-center justify-center hover:bg-border transition-colors">-</button>
+													<span className="text-xs font-semibold w-4 text-center">{item.quantity}</span>
+													<button onClick={() => updateCartQuantity(item._id, 1)} className="w-6 h-6 rounded bg-muted flex items-center justify-center hover:bg-border transition-colors">+</button>
+												</div>
+											</div>
+											<div className="font-bold text-sm whitespace-nowrap">Rs. {item.price * item.quantity}</div>
+										</div>
+									))}
+								</div>
+
+								<div className="p-5 bg-muted/30 border-t border-border">
+									<div className="flex justify-between items-center mb-4 text-lg">
+										<span className="font-medium text-muted-foreground">Total</span>
+										<span className="font-black text-2xl text-foreground">Rs. {cartTotal}</span>
+									</div>
+									<button
+										onClick={() => setCheckoutOpen(true)}
+										className="w-full rounded-xl bg-primary py-3.5 text-sm font-bold text-primary-foreground hover:bg-primary/90 transition-all shadow-md hover:shadow-lg"
+									>
+										Proceed to Checkout
+									</button>
+								</div>
+							</div>
+						)}
+					</div>
 				</div>
 			</main>
 
 			{/* Checkout modal */}
 			{checkoutOpen && (
-				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-					<div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl">
-						<h2 className="text-xl font-bold mb-4">Checkout</h2>
-						<div className="space-y-4 mb-6">
-							<div className="grid grid-cols-2 gap-4">
+				<div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+					<div className="w-full max-w-lg rounded-2xl border border-border bg-card p-6 md:p-8 shadow-2xl flex flex-col max-h-[90vh]">
+						<div className="flex justify-between items-center mb-6 shrink-0">
+							<h2 className="text-2xl font-bold">Checkout</h2>
+							<button onClick={() => setCheckoutOpen(false)} className="text-muted-foreground hover:text-foreground text-2xl leading-none">&times;</button>
+						</div>
+
+						<div className="overflow-y-auto pr-2 -mr-2 flex-1 scrollbar-hide">
+							<div className="space-y-4 mb-8">
+								<h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground border-b border-border pb-2">Shipping Details</h3>
+								<div className="grid grid-cols-2 gap-4">
+									<div>
+										<label className="block text-xs font-medium mb-1.5 text-muted-foreground">First Name <span className="text-destructive">*</span></label>
+										<input
+											type="text"
+											required
+											value={shippingAddress.firstName}
+											onChange={(e) => setShippingAddress({ ...shippingAddress, firstName: e.target.value })}
+											className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/50"
+										/>
+									</div>
+									<div>
+										<label className="block text-xs font-medium mb-1.5 text-muted-foreground">Last Name <span className="text-destructive">*</span></label>
+										<input
+											type="text"
+											value={shippingAddress.lastName}
+											onChange={(e) => setShippingAddress({ ...shippingAddress, lastName: e.target.value })}
+											className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/50"
+										/>
+									</div>
+								</div>
 								<div>
-									<label className="block text-sm font-medium mb-1">First Name *</label>
+									<label className="block text-xs font-medium mb-1.5 text-muted-foreground">Email Address <span className="text-destructive">*</span></label>
 									<input
-										type="text"
+										type="email"
 										required
-										value={shippingAddress.firstName}
-										onChange={(e) =>
-											setShippingAddress({ ...shippingAddress, firstName: e.target.value })
-										}
-										className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+										value={shippingAddress.email}
+										onChange={(e) => setShippingAddress({ ...shippingAddress, email: e.target.value })}
+										className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/50"
 									/>
 								</div>
 								<div>
-									<label className="block text-sm font-medium mb-1">Last Name *</label>
+									<label className="block text-xs font-medium mb-1.5 text-muted-foreground">Delivery Address <span className="text-destructive">*</span></label>
+									<textarea
+										required
+										rows={2}
+										value={shippingAddress.address}
+										onChange={(e) => setShippingAddress({ ...shippingAddress, address: e.target.value })}
+										className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/50 resize-none"
+									/>
+								</div>
+								<div>
+									<label className="block text-xs font-medium mb-1.5 text-muted-foreground">Phone Number <span className="text-destructive">*</span></label>
 									<input
-										type="text"
-										value={shippingAddress.lastName}
-										onChange={(e) =>
-											setShippingAddress({ ...shippingAddress, lastName: e.target.value })
-										}
-										className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
+										type="tel"
+										required
+										value={shippingAddress.phone}
+										onChange={(e) => setShippingAddress({ ...shippingAddress, phone: e.target.value })}
+										className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/50"
 									/>
 								</div>
 							</div>
-							<div>
-								<label className="block text-sm font-medium mb-1">Email *</label>
-								<input
-									type="email"
-									required
-									value={shippingAddress.email}
-									onChange={(e) =>
-										setShippingAddress({ ...shippingAddress, email: e.target.value })
-									}
-									className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-								/>
-							</div>
-							<div>
-								<label className="block text-sm font-medium mb-1">Address *</label>
-								<textarea
-									required
-									rows={2}
-									value={shippingAddress.address}
-									onChange={(e) =>
-										setShippingAddress({ ...shippingAddress, address: e.target.value })
-									}
-									className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-								/>
-							</div>
-							<div>
-								<label className="block text-sm font-medium mb-1">Phone *</label>
-								<input
-									type="tel"
-									required
-									value={shippingAddress.phone}
-									onChange={(e) =>
-										setShippingAddress({ ...shippingAddress, phone: e.target.value })
-									}
-									className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
-								/>
-							</div>
-						</div>
 
-						<div className="border-t border-border pt-4 mb-4">
-							<p className="text-sm font-medium mb-2">Order summary</p>
-							{cart.map((item) => (
-								<div key={item._id} className="flex justify-between text-sm mb-1">
-									<span>
-										{item.name} x {item.quantity}
-									</span>
-									<span>Rs. {item.price * item.quantity}</span>
+							<div className="mb-6">
+								<h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground border-b border-border pb-2 mb-4">Order Summary</h3>
+								<div className="space-y-3">
+									{cart.map((item) => (
+										<div key={item._id} className="flex justify-between text-sm">
+											<span className="font-medium text-muted-foreground">
+												{item.name} <span className="text-xs px-1">x</span> {item.quantity}
+											</span>
+											<span className="font-semibold">Rs. {item.price * item.quantity}</span>
+										</div>
+									))}
+									<div className="flex justify-between items-center pt-4 border-t border-border/50">
+										<span className="font-semibold">Total Amount</span>
+										<span className="text-xl font-black text-primary">Rs. {cartTotal}</span>
+									</div>
 								</div>
-							))}
-							<div className="flex justify-between font-bold mt-2">
-								<span>Total</span>
-								<span>Rs. {cartTotal}</span>
 							</div>
 						</div>
 
-						<div className="flex gap-3">
-							<button
-								onClick={() => setCheckoutOpen(false)}
-								className="flex-1 rounded-lg border border-border py-2 text-sm font-medium hover:bg-primary/5"
-							>
-								Cancel
-							</button>
+						<div className="pt-6 border-t border-border shrink-0">
 							<button
 								onClick={handlePayWithEsewa}
 								disabled={paying}
-								className="flex-1 rounded-lg bg-[#60BB46] py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+								className={`w-full rounded-xl py-3.5 text-sm font-bold text-white transition-all shadow-md hover:shadow-lg ${paying ? 'bg-muted text-muted-foreground cursor-wait' : 'bg-[#60BB46] hover:bg-[#52a33b]'}`}
 							>
-								{paying ? "Redirecting..." : "Pay with eSewa"}
+								{paying ? "Processing Payment..." : "Pay Securely via eSewa"}
 							</button>
 						</div>
 					</div>
