@@ -21,6 +21,7 @@ interface Campaign {
 	raised: number;
 	image?: { url: string };
 	ownerId: {
+		_id: string;
 		firstName: string;
 		lastName: string;
 	};
@@ -135,7 +136,7 @@ export default function DonationsPage() {
 													href={`/dashboard/donations/${campaign._id}`}
 													className="block w-full text-center bg-primary text-primary-foreground font-semibold py-2 rounded-lg hover:bg-primary/90 transition-colors"
 												>
-													{isShelter && campaign.ownerId === user._id ? "Manage Campaign" : "Donate Now"}
+													{isShelter && campaign.ownerId._id === user._id ? "Manage Campaign" : "Donate Now"}
 												</Link>
 											</div>
 										</div>

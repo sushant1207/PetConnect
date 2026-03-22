@@ -30,8 +30,10 @@ interface Appointment {
   petName: string;
   petType: string;
   reason: string;
-  status: string;
+  status: "pending" | "confirmed" | "completed" | "cancelled";
   doctor: Doctor;
+  locationPreference?: string;
+  address?: string;
 }
 
 export default function AppointmentsPage() {
@@ -39,6 +41,16 @@ export default function AppointmentsPage() {
   const [user, setUser] = useState<User | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Filters & Search
+  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "confirmed" | "completed" | "cancelled">("all");
+  const [doctorSearch, setDoctorSearch] = useState("");
+  const [dateFilter, setDateFilter] = useState("");
+  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
+  
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 6;
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -75,6 +87,28 @@ export default function AppointmentsPage() {
     }
   };
 
+  const handleCancel = async (appointmentId: string) => {
+    if (!window.confirm("Are you sure you want to cancel this appointment?")) return;
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`http://localhost:5555/api/appointments/${appointmentId}/status`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status: "cancelled", cancellationReason: "Cancelled by pet owner" }),
+      });
+      if (response.ok) {
+        fetchAppointments(user!._id);
+      } else {
+        alert("Failed to cancel appointment");
+      }
+    } catch (error) {
+      console.error("Error cancelling appointment", error);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -103,90 +137,248 @@ export default function AppointmentsPage() {
     }
   };
 
+  // 1. Filter
+  let processed = appointments.filter((app) => statusFilter === "all" || app.status === statusFilter);
+
+  // 2. Doctor Search
+  if (doctorSearch.trim() !== "") {
+    const term = doctorSearch.toLowerCase();
+    processed = processed.filter(
+      (app) =>
+        app.doctor.firstName.toLowerCase().includes(term) ||
+        app.doctor.lastName.toLowerCase().includes(term) ||
+        app.doctor.specialization.toLowerCase().includes(term)
+    );
+  }
+
+  // 3. Date Search
+  if (dateFilter) {
+    processed = processed.filter((app) => app.date.startsWith(dateFilter));
+  }
+
+  // 4. Sort
+  processed.sort((a, b) => {
+    const timeA = new Date(a.date).getTime();
+    const timeB = new Date(b.date).getTime();
+    return sortOrder === "newest" ? timeB - timeA : timeA - timeB;
+  });
+
+  // 5. Pagination
+  const totalPages = Math.max(1, Math.ceil(processed.length / itemsPerPage));
+  // Reset currentPage if it's out of bounds after filtering
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  if (currentPage !== safeCurrentPage && safeCurrentPage > 0) {
+    setCurrentPage(safeCurrentPage);
+  }
+
+  const startIndex = (safeCurrentPage - 1) * itemsPerPage;
+  const paginatedAppointments = processed.slice(startIndex, startIndex + itemsPerPage);
+
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <Sidebar user={user} />
       <main className="flex-1 overflow-y-auto p-6 md:p-8 lg:p-12">
         <div className="max-w-7xl mx-auto">
-          <div className="mb-8 flex items-center justify-between">
+          <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-bold mb-2">My Appointments</h1>
-              <p className="text-muted-foreground">View and manage your appointments</p>
+              <p className="text-muted-foreground">Track and manage your upcoming veterinarian visits.</p>
             </div>
             <Link
               href="/dashboard/appointments/book"
-              className="rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+              className="rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors shadow-md hover:shadow-lg self-start md:self-auto flex items-center gap-2"
             >
-              + Book Appointment
+              <span>+</span> Book Appointment
             </Link>
           </div>
 
-          {appointments.length === 0 ? (
-            <div className="text-center py-12 rounded-lg border border-border bg-card">
-              <div className="text-4xl mb-4">📅</div>
-              <h3 className="text-xl font-semibold mb-2">No appointments yet</h3>
-              <p className="text-muted-foreground mb-6">Book your first appointment with a veterinarian</p>
-              <Link
-                href="/dashboard/appointments/book"
-                className="inline-block rounded-lg bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90 transition-colors"
+          <div className="bg-card border border-border rounded-xl p-4 mb-6 shadow-sm flex flex-col xl:flex-row gap-4 items-center justify-between">
+            {/* Status Filters */}
+            <div className="flex gap-2 overflow-x-auto w-full xl:w-auto p-1 scrollbar-hide">
+              {(["all", "pending", "confirmed", "completed", "cancelled"] as const).map((status) => (
+                <button
+                  key={status}
+                  onClick={() => {
+                    setStatusFilter(status);
+                    setCurrentPage(1);
+                  }}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold capitalize whitespace-nowrap transition-all duration-200 ${
+                    statusFilter === status
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "text-muted-foreground hover:bg-primary/5 hover:text-foreground"
+                  }`}
+                >
+                  {status}
+                </button>
+              ))}
+            </div>
+
+            {/* Sub Filters */}
+            <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto">
+              <input 
+                type="text" 
+                placeholder="Search Doctor..." 
+                value={doctorSearch}
+                onChange={(e) => {
+                  setDoctorSearch(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="rounded-lg border border-input bg-background px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/50 flex-1 sm:w-48"
+              />
+              <input 
+                type="date"
+                value={dateFilter}
+                onChange={(e) => {
+                  setDateFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="rounded-lg border border-input bg-background px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/50 text-muted-foreground"
+              />
+              <select
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value as "newest" | "oldest")}
+                className="rounded-lg border border-input bg-background px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/50 font-medium"
               >
-                Book Appointment
-              </Link>
+                <option value="newest">Newest First</option>
+                <option value="oldest">Oldest First</option>
+              </select>
+            </div>
+          </div>
+
+          {paginatedAppointments.length === 0 ? (
+            <div className="text-center py-16 rounded-2xl border border-dashed border-border bg-card/50">
+              <div className="text-5xl mb-4 opacity-75">📅</div>
+              <h3 className="text-xl font-semibold mb-2">No appointments found</h3>
+              <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
+                {appointments.length === 0 
+                  ? "You don't have any appointments booked yet. Schedule a visit to keep your pet healthy."
+                  : "No appointments match your filters."}
+              </p>
+              {appointments.length === 0 && (
+                <Link
+                  href="/dashboard/appointments/book"
+                  className="inline-block rounded-lg border border-primary text-primary px-6 py-3 text-sm font-semibold hover:bg-primary/5 transition-colors"
+                >
+                  Schedule Now
+                </Link>
+              )}
             </div>
           ) : (
-            <div className="space-y-4">
-              {appointments.map((appointment) => (
-                <div
-                  key={appointment._id}
-                  className="rounded-lg border border-border bg-card p-6 shadow-sm hover:shadow-md transition-shadow"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-4 mb-4">
-                        <h3 className="text-xl font-semibold">{appointment.petName}</h3>
+            <>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                {paginatedAppointments.map((appointment) => (
+                  <div
+                    key={appointment._id}
+                    className="rounded-2xl border border-border bg-card p-6 shadow-sm hover:shadow-md transition-all duration-200 relative group overflow-hidden"
+                  >
+                    <div className={`absolute top-0 left-0 w-1.5 h-full ${
+                      appointment.status === "confirmed" ? "bg-green-500" :
+                      appointment.status === "pending" ? "bg-yellow-500" :
+                      appointment.status === "completed" ? "bg-blue-500" :
+                      "bg-red-500"
+                    }`}></div>
+                    
+                    <div className="flex flex-col h-full pl-2">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex-1 pr-4">
+                          <h3 className="text-xl font-bold flex items-center gap-2 truncate">
+                            <span className="text-2xl">{appointment.petType.toLowerCase() === 'cat' ? '🐱' : appointment.petType.toLowerCase() === 'dog' ? '🐶' : '🐾'}</span>
+                            {appointment.petName}
+                          </h3>
+                          <p className="text-sm text-muted-foreground mt-1 font-medium bg-foreground/5 inline-block px-2 py-0.5 rounded-md line-clamp-1 max-w-full">
+                            {appointment.reason}
+                          </p>
+                        </div>
                         <span
-                          className={`px-3 py-1 rounded-full text-xs font-semibold border capitalize ${getStatusColor(
+                          className={`px-3 py-1 rounded-full text-[11px] uppercase tracking-wider font-bold border whitespace-nowrap flex-shrink-0 ${getStatusColor(
                             appointment.status
                           )}`}
                         >
                           {appointment.status}
                         </span>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+
+                      <div className="bg-background rounded-xl p-4 border border-border/50 grid grid-cols-2 gap-y-4 gap-x-2 text-sm flex-grow mb-4">
                         <div>
-                          <span className="text-muted-foreground">Veterinarian:</span>
-                          <span className="ml-2 font-medium">
-                            {appointment.doctor.firstName} {appointment.doctor.lastName}
+                          <span className="text-muted-foreground block text-xs uppercase tracking-wider mb-1">Doctor</span>
+                          <span className="font-semibold text-foreground">
+                            Dr. {appointment.doctor.firstName} {appointment.doctor.lastName}
                           </span>
+                          <div className="text-xs text-muted-foreground truncate">{appointment.doctor.specialization}</div>
                         </div>
+                        
                         <div>
-                          <span className="text-muted-foreground">Specialization:</span>
-                          <span className="ml-2 font-medium">{appointment.doctor.specialization}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Date:</span>
-                          <span className="ml-2 font-medium">
-                            {new Date(appointment.date).toLocaleDateString()}
+                          <span className="text-muted-foreground block text-xs uppercase tracking-wider mb-1">Schedule</span>
+                          <span className="font-semibold text-foreground">
+                            {new Date(appointment.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
                           </span>
+                          <div className="text-xs font-medium text-primary mt-0.5">{appointment.timeSlot}</div>
                         </div>
-                        <div>
-                          <span className="text-muted-foreground">Time:</span>
-                          <span className="ml-2 font-medium">{appointment.timeSlot}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Pet Type:</span>
-                          <span className="ml-2 font-medium capitalize">{appointment.petType}</span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Reason:</span>
-                          <span className="ml-2 font-medium">{appointment.reason}</span>
+
+                        <div className="col-span-2 pt-2 border-t border-border/50">
+                          <span className="text-muted-foreground block text-xs uppercase tracking-wider mb-1">Location</span>
+                          <span className="font-medium text-foreground flex items-center gap-1.5">
+                            {appointment.locationPreference === "home_visit" ? "🏠 Home Visit" : "🏥 Clinic"}
+                          </span>
+                          {appointment.address && appointment.locationPreference === "home_visit" && (
+                            <div className="text-xs text-muted-foreground truncate mt-0.5">{appointment.address}</div>
+                          )}
+                          {appointment.doctor.clinicAddress && appointment.locationPreference === "clinic" && (
+                            <div className="text-xs text-muted-foreground truncate mt-0.5">{appointment.doctor.clinicAddress}</div>
+                          )}
                         </div>
                       </div>
+
+                      {appointment.status === "pending" && (
+                        <div className="flex justify-end mt-auto pt-2 border-t border-border/30">
+                          <button
+                            onClick={() => handleCancel(appointment._id)}
+                            className="text-sm font-semibold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-4 py-2 rounded-lg transition-colors"
+                          >
+                            Cancel Appointment
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
+                ))}
+              </div>
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="flex justify-center items-center gap-2 bg-card border border-border p-2 rounded-xl w-fit mx-auto shadow-sm">
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={safeCurrentPage === 1}
+                    className="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-primary/10 disabled:opacity-50 disabled:hover:bg-transparent"
+                  >
+                    Previous
+                  </button>
+                  <div className="flex items-center gap-1 px-2">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                      <button
+                        key={pageNum}
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`w-8 h-8 rounded-lg text-sm font-medium transition-colors ${
+                          safeCurrentPage === pageNum
+                            ? "bg-primary text-primary-foreground"
+                            : "hover:bg-primary/10 text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={safeCurrentPage === totalPages}
+                    className="px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-primary/10 disabled:opacity-50 disabled:hover:bg-transparent"
+                  >
+                    Next
+                  </button>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </div>
       </main>

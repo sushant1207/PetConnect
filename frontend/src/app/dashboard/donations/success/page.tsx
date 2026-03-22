@@ -7,21 +7,42 @@ import Link from "next/link";
 function SuccessContent() {
 	const router = useRouter();
 	const searchParams = useSearchParams();
-	const donationId = searchParams.get("donationId");
+	const dataParam = searchParams.get("data");
+	let donationId = searchParams.get("donationId");
+
 	const [verifying, setVerifying] = useState(true);
 
 	useEffect(() => {
-		if (donationId) {
-			verifyPayment();
+		if (!donationId && dataParam) {
+			try {
+				const decoded = JSON.parse(atob(dataParam));
+				donationId = decoded.transaction_uuid;
+			} catch (e) {
+				console.error("Failed to decode eSewa data parameter:", e);
+			}
 		}
-	}, [donationId]);
 
-	const verifyPayment = async () => {
+		if (donationId) {
+			verifyPayment(donationId);
+		} else {
+			setVerifying(false);
+		}
+	}, [donationId, dataParam]);
+
+	const verifyPayment = async (id: string) => {
 		try {
+			let status = "success";
+			if (dataParam) {
+				try {
+					const decoded = JSON.parse(atob(dataParam));
+					status = decoded.status === "COMPLETE" ? "success" : "failed";
+				} catch (e) {}
+			}
+
 			const response = await fetch("http://localhost:5555/api/charity/verify", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ donationId, status: "success" })
+				body: JSON.stringify({ donationId: id, status })
 			});
 			if (response.ok) {
 				// Payment verified
