@@ -1,8 +1,10 @@
 import { Request, Response } from "express";
 import Appointment from "../models/Appointment";
 import Doctor from "../models/Doctor";
+import User from "../models/User";
 import { DayOfWeek, generateSlotsForDay, getDayOfWeek, parseAvailabilityEntry, slotOverlaps } from "../utils/slotValidation";
 import { buildEsewaFormData } from "../utils/esewa";
+import { sendEmail } from "../utils/mailer";
 
 export async function getAvailability(req: Request, res: Response) {
 	try {
@@ -27,6 +29,7 @@ export async function getAvailability(req: Request, res: Response) {
 
 		const sameDayAppointments = await Appointment.find({
 			doctor: doctorId,
+			status: { $ne: "cancelled" },
 			date: {
 				$gte: new Date(new Date(date).setHours(0, 0, 0, 0)),
 				$lte: new Date(new Date(date).setHours(23, 59, 59, 999))
@@ -87,6 +90,7 @@ export async function createAppointment(req: Request, res: Response) {
 		// Check for conflicts
 		const conflict = await Appointment.findOne({
 			doctor: doctorId,
+			status: { $ne: "cancelled" },
 			date: {
 				$gte: new Date(new Date(date).setHours(0, 0, 0, 0)),
 				$lte: new Date(new Date(date).setHours(23, 59, 59, 999))
@@ -110,6 +114,22 @@ export async function createAppointment(req: Request, res: Response) {
 			appointmentDuration: doctor.appointmentDuration || 30,
 			payment: { status: "pending", amount: doctor.bookingFee || 0 }
 		});
+
+		// Send email since it's booked (direct creation)
+		const userData = await User.findById(user).select("email firstName");
+		if (userData && userData.email) {
+			sendEmail(
+				userData.email,
+				"Appointment Request Received - PetConnect",
+				`
+				<h3>Your Appointment Request</h3>
+				<p>Dear ${userData.firstName || 'Customer'},</p>
+				<p>We've received your appointment request for <strong>${petName}</strong> on <strong>${selectedDate.toLocaleDateString()}</strong> at <strong>${timeSlot}</strong>.</p>
+				<p>Status: Pending confirmation.</p>
+				<p>Thank you for using PetConnect!</p>
+				`
+			);
+		}
 
 		return res.status(201).json({ message: "Appointment booked", appointment: created });
 	} catch (error: any) {
@@ -198,6 +218,7 @@ export async function initiateAppointmentPayment(req: Request, res: Response) {
 
 		const conflict = await Appointment.findOne({
 			doctor: doctorId,
+			status: { $ne: "cancelled" },
 			date: {
 				$gte: new Date(new Date(date).setHours(0, 0, 0, 0)),
 				$lte: new Date(new Date(date).setHours(23, 59, 59, 999))
@@ -249,7 +270,7 @@ export async function verifyAppointmentPayment(req: Request, res: Response) {
 	try {
 		const { appointmentId, status, refId } = req.body;
 
-		const appointment = await Appointment.findById(appointmentId);
+		const appointment = await Appointment.findById(appointmentId).populate("user", "email firstName").populate("doctor", "firstName lastName");
 		if (!appointment) return res.status(404).json({ message: "Appointment not found" });
 
 		if (status === "COMPLETE" || status === "success") {
@@ -259,6 +280,27 @@ export async function verifyAppointmentPayment(req: Request, res: Response) {
 			appointment.payment.paidAt = new Date();
 			appointment.status = "confirmed";
 			await appointment.save();
+
+			const user = appointment.user as any;
+			const doc = appointment.doctor as any;
+			if (user && user.email) {
+				sendEmail(
+					user.email,
+					"Appointment Confirmed - PetConnect",
+					`
+					<h3>Your Appointment is Confirmed!</h3>
+					<p>Dear ${user.firstName || 'Customer'},</p>
+					<p>Your appointment with Dr. ${doc?.firstName || ''} ${doc?.lastName || ''} has been successfully paid and confirmed.</p>
+					<ul>
+						<li><strong>Date:</strong> ${new Date(appointment.date).toLocaleDateString()}</li>
+						<li><strong>Time Slot:</strong> ${appointment.timeSlot}</li>
+						<li><strong>Pet Name:</strong> ${appointment.petName}</li>
+						<li><strong>Reason:</strong> ${appointment.reason}</li>
+					</ul>
+					<p>Thank you for using PetConnect!</p>
+					`
+				);
+			}
 		} else {
 			appointment.payment.status = "pending";
 			await appointment.save();

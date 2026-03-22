@@ -4,6 +4,7 @@ import Order from "../models/Order";
 import User from "../models/User";
 import { AuthRequest } from "../utils/auth";
 import { buildEsewaFormData } from "../utils/esewa";
+import { sendEmail } from "../utils/mailer";
 
 // Pharmacy adds/creates a product
 export const createProduct = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -341,6 +342,7 @@ export const verifyOrderPayment = async (req: Request, res: Response): Promise<v
 
 		if (status === "success" || status === "COMPLETE") {
 			order.paymentStatus = "completed";
+			order.status = "processing";
 			order.esewaRefId = refId || (req.body as any).transaction_code;
 			await order.save();
 
@@ -348,8 +350,27 @@ export const verifyOrderPayment = async (req: Request, res: Response): Promise<v
 			for (const item of order.items) {
 				await Product.findByIdAndUpdate(item.productId, { $inc: { stock: -item.quantity } });
 			}
+
+			const user = await User.findById(order.userId).select("email firstName");
+			if (user && user.email) {
+				const itemList = order.items.map((i: any) => `<li>${i.quantity}x ${i.productName} (Rs. ${i.price})</li>`).join("");
+				sendEmail(
+					user.email,
+					"Order Confirmed - PetConnect Pharmacy",
+					`
+					<h3>Your Order is Confirmed!</h3>
+					<p>Dear ${user.firstName || 'Customer'},</p>
+					<p>Your payment was successful and your order is now processing.</p>
+					<ul>${itemList}</ul>
+					<p><strong>Total:</strong> Rs. ${order.totalAmount}</p>
+					<p>Thank you for using PetConnect Pharmacy!</p>
+					`
+				);
+			}
+
 		} else {
 			order.paymentStatus = "failed";
+			order.status = "cancelled";
 			await order.save();
 		}
 
@@ -423,6 +444,22 @@ export const createOrder = async (req: AuthRequest, res: Response): Promise<void
 			status: "pending",
 			paymentStatus: paymentMethod === "cash" ? "pending" : "completed"
 		});
+
+		if (user && user.email) {
+			const itemList = orderItems.map((i) => `<li>${i.quantity}x ${i.productName} (Rs. ${i.price})</li>`).join("");
+			sendEmail(
+				user.email,
+				"Order Placed - PetConnect Pharmacy",
+				`
+				<h3>Your Order has been placed</h3>
+				<p>Dear ${user.firstName || 'Customer'},</p>
+				<p>We've received your order. Payment method: ${paymentMethod}.</p>
+				<ul>${itemList}</ul>
+				<p><strong>Total:</strong> Rs. ${order.totalAmount}</p>
+				<p>Thank you for using PetConnect Pharmacy!</p>
+				`
+			);
+		}
 
 		res.status(201).json({
 			success: true,
