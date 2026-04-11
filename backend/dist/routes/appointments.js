@@ -70,4 +70,128 @@ router.get("/availability", appointmentController_1.getAvailability);
  *         description: Server error
  */
 router.post("/", appointmentController_1.createAppointment);
+/**
+ * @swagger
+ * /api/appointments/pay/esewa:
+ *   post:
+ *     tags: [Appointments]
+ *     summary: Initiate eSewa payment for an appointment
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [appointmentId]
+ *             properties:
+ *               appointmentId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Payment initiation payload
+ *       400:
+ *         description: Invalid appointment or payment state
+ */
+router.post("/pay/esewa", appointmentController_1.initiateAppointmentPayment);
+/**
+ * @swagger
+ * /api/appointments/pay/verify:
+ *   post:
+ *     tags: [Appointments]
+ *     summary: Verify appointment payment transaction
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [oid, amt, refId]
+ *             properties:
+ *               oid:
+ *                 type: string
+ *               amt:
+ *                 type: string
+ *               refId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Payment verified and appointment updated
+ *       400:
+ *         description: Payment verification failed
+ */
+router.post("/pay/verify", appointmentController_1.verifyAppointmentPayment);
+/**
+ * @swagger
+ * /api/appointments/doctor/{doctorId}:
+ *   get:
+ *     tags: [Appointments]
+ *     summary: Get appointments for a doctor
+ *     parameters:
+ *       - in: path
+ *         name: doctorId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Doctor appointment list
+ *       404:
+ *         description: Doctor not found
+ */
+router.get("/doctor/:doctorId", appointmentController_1.getAppointmentsByDoctor);
+/**
+ * @swagger
+ * /api/appointments/user/{userId}:
+ *   get:
+ *     tags: [Appointments]
+ *     summary: Get appointments for a user
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: User appointment list
+ *       404:
+ *         description: User not found
+ */
+router.get("/user/:userId", appointmentController_1.getAppointmentsByUser);
+/**
+ * @swagger
+ * /api/appointments/{id}/status:
+ *   put:
+ *     tags: [Appointments]
+ *     summary: Update appointment status
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [status]
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [pending, confirmed, cancelled, completed]
+ *               cancellationReason:
+ *                 type: string
+ *               notes:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Appointment status updated
+ *       400:
+ *         description: Invalid status transition
+ *       404:
+ *         description: Appointment not found
+ */
+router.put("/:id/status", appointmentController_1.updateAppointmentStatus);
 exports.default = router;

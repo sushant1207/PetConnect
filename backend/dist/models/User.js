@@ -58,7 +58,7 @@ const UserSchema = new mongoose_1.Schema({
             return !this.googleId;
         }
     },
-    role: { type: String, enum: ["user", "admin", "doctor", "staff"], default: "user" },
+    role: { type: String, enum: ["pet_owner", "veterinarian", "shelter", "pharmacy", "admin", "staff"], default: "pet_owner" },
     __v: { type: Number, default: 0 },
     avatar: {
         public_id: String,
@@ -91,7 +91,9 @@ const UserSchema = new mongoose_1.Schema({
     lastActive: { type: Date, default: null },
     isOnline: { type: Boolean, default: false },
     lastAuthMethod: { type: String, enum: ["password", "google"], default: "password" },
-    uniqueSessionId: { type: String, default: null }
+    uniqueSessionId: { type: String, default: null },
+    lastLoginIp: { type: String, default: null },
+    lastLoginDate: { type: Date, default: null }
 }, {
     timestamps: true,
     toJSON: { virtuals: true },

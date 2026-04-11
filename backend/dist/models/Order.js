@@ -37,6 +37,7 @@ const mongoose_1 = __importStar(require("mongoose"));
 const OrderSchema = new mongoose_1.Schema({
     userId: { type: mongoose_1.Schema.Types.ObjectId, ref: "User", required: true },
     userName: { type: String, required: true },
+    pharmacyId: { type: mongoose_1.Schema.Types.ObjectId, ref: "User" },
     items: [
         {
             productId: { type: mongoose_1.Schema.Types.ObjectId, ref: "Product", required: true },
@@ -46,6 +47,8 @@ const OrderSchema = new mongoose_1.Schema({
         }
     ],
     totalAmount: { type: Number, required: true },
+    platformFee: { type: Number, default: 0 },
+    netAmount: { type: Number, default: 0 },
     status: { type: String, enum: ["pending", "processing", "shipped", "delivered", "cancelled"], default: "pending" },
     paymentStatus: { type: String, enum: ["pending", "completed", "failed", "refunded"], default: "pending" },
     paymentMethod: { type: String, enum: ["card", "esewa", "khalti", "cash"] },

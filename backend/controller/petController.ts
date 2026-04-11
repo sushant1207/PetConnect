@@ -45,11 +45,17 @@ export async function createPet(req: Request, res: Response) {
 export async function getPetsByOwner(req: Request, res: Response) {
 	try {
 		const { ownerId } = req.params;
+		const { includeInactive } = req.query;
 		if (!ownerId) {
 			return res.status(400).json({ message: "ownerId is required" });
 		}
 
-		const pets = await Pet.find({ ownerId }).sort({ createdAt: -1 });
+		const filter: any = { ownerId };
+		if (includeInactive !== "true") {
+			filter.isActive = { $ne: false };
+		}
+
+		const pets = await Pet.find(filter).sort({ createdAt: -1 });
 		return res.json({ pets });
 	} catch (error: any) {
 		console.error("Get pets error:", error);

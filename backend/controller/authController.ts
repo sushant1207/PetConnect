@@ -58,7 +58,6 @@ export async function signup(req: Request, res: Response) {
 		if (lastName && lastName.trim()) userData.lastName = lastName.trim();
 
 		const otp = Math.floor(100000 + Math.random() * 900000).toString();
-		console.log(`Sending OTP ${otp} to ${email} for signup`);
 		userData.verificationCode = otp;
 		userData.verificationCodeExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 		userData.isEmailVerified = false;
@@ -125,7 +124,6 @@ export async function login(req: Request, res: Response) {
 
 		if (!user.isEmailVerified) {
 			const otp = Math.floor(100000 + Math.random() * 900000).toString();
-			console.log(`Resending OTP ${otp} to ${user.email} for verification`);
 			user.verificationCode = otp;
 			user.verificationCodeExpires = new Date(Date.now() + 10 * 60 * 1000);
 			await user.save();
@@ -199,7 +197,6 @@ export async function requestLoginOtp(req: Request, res: Response) {
 
 		const otp = Math.floor(100000 + Math.random() * 900000).toString();
 		user.verificationCode = otp;
-		console.log(`Sending OTP ${otp} to ${user.email} for login`);
 		user.verificationCodeExpires = new Date(Date.now() + 10 * 60 * 1000);
 		await user.save();
 

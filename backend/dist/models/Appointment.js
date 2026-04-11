@@ -51,10 +51,14 @@ const appointmentSchema = new mongoose_1.Schema({
     payment: {
         status: { type: String, enum: ["pending", "paid", "refunded"], default: "pending" },
         amount: { type: Number, required: [true, "Payment amount is required"] },
+        platformFee: { type: Number, default: 0 },
+        netAmount: { type: Number, default: 0 },
         transactionId: String,
         method: { type: String, enum: ["cash", "card", "khalti", "esewa"] },
         paidAt: Date
     },
+    reminderEveningSentAt: Date,
+    reminderMorningSentAt: Date,
     createdAt: { type: Date, default: Date.now }
 });
 exports.default = mongoose_1.default.model("Appointment", appointmentSchema);

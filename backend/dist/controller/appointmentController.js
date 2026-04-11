@@ -36,6 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.processDueAppointmentReminders = processDueAppointmentReminders;
 exports.getAvailability = getAvailability;
 exports.createAppointment = createAppointment;
 exports.getAppointmentsByDoctor = getAppointmentsByDoctor;
@@ -45,8 +46,99 @@ exports.verifyAppointmentPayment = verifyAppointmentPayment;
 exports.updateAppointmentStatus = updateAppointmentStatus;
 const Appointment_1 = __importDefault(require("../models/Appointment"));
 const Doctor_1 = __importDefault(require("../models/Doctor"));
+const User_1 = __importDefault(require("../models/User"));
 const slotValidation_1 = require("../utils/slotValidation");
 const esewa_1 = require("../utils/esewa");
+const mailer_1 = require("../utils/mailer");
+const NPT_OFFSET_MINUTES = 5 * 60 + 45;
+const MORNING_REMINDER_HOUR_NPT = Number(process.env.APPOINTMENT_MORNING_REMINDER_HOUR_NPT || 8);
+const PREVIOUS_DAY_REMINDER_HOUR_NPT = Number(process.env.APPOINTMENT_PREVIOUS_DAY_REMINDER_HOUR_NPT || 18);
+const getAppointmentStartDate = (appointmentDate, timeSlot) => {
+    const [start] = String(timeSlot || "").split("-");
+    if (!start || !start.includes(":"))
+        return null;
+    const [hoursStr, minutesStr] = start.split(":");
+    const hours = Number(hoursStr);
+    const minutes = Number(minutesStr);
+    if (Number.isNaN(hours) || Number.isNaN(minutes))
+        return null;
+    const startAt = new Date(appointmentDate);
+    startAt.setHours(hours, minutes, 0, 0);
+    return startAt;
+};
+async function processDueAppointmentReminders() {
+    try {
+        const now = new Date();
+        const shiftDateKey = (dateKey, deltaDays) => {
+            const [y, m, d] = dateKey.split("-").map(Number);
+            const shifted = new Date(Date.UTC(y, (m || 1) - 1, d || 1));
+            shifted.setUTCDate(shifted.getUTCDate() + deltaDays);
+            return shifted.toISOString().split("T")[0];
+        };
+        const nptDateTimeToUtc = (dateKey, hour, minute = 0) => {
+            const [y, m, d] = dateKey.split("-").map(Number);
+            const utcMillis = Date.UTC(y, (m || 1) - 1, d || 1, hour, minute, 0, 0) - NPT_OFFSET_MINUTES * 60 * 1000;
+            return new Date(utcMillis);
+        };
+        const appointments = await Appointment_1.default.find({
+            status: "confirmed",
+            date: { $gte: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000) }
+        })
+            .populate("user", "email firstName")
+            .populate("doctor", "firstName lastName");
+        for (const appointment of appointments) {
+            const startAt = getAppointmentStartDate(new Date(appointment.date), appointment.timeSlot);
+            if (!startAt)
+                continue;
+            if (startAt <= now)
+                continue;
+            const appointmentDateKey = new Date(appointment.date).toISOString().split("T")[0];
+            const previousDayDateKey = shiftDateKey(appointmentDateKey, -1);
+            const previousDayReminderAt = nptDateTimeToUtc(previousDayDateKey, PREVIOUS_DAY_REMINDER_HOUR_NPT, 0);
+            const morningReminderAt = nptDateTimeToUtc(appointmentDateKey, MORNING_REMINDER_HOUR_NPT, 0);
+            const user = appointment.user;
+            const doctor = appointment.doctor;
+            if (!user?.email)
+                continue;
+            if (!appointment.reminderEveningSentAt && now >= previousDayReminderAt) {
+                await (0, mailer_1.sendEmail)(user.email, "Appointment Reminder (Evening) - PetConnect", `
+					<h3>Appointment Reminder</h3>
+					<p>Dear ${user.firstName || "Customer"},</p>
+					<p>This is your evening reminder for tomorrow's appointment.</p>
+					<ul>
+						<li><strong>Date:</strong> ${new Date(appointment.date).toLocaleDateString()}</li>
+						<li><strong>Time:</strong> ${appointment.timeSlot}</li>
+						<li><strong>Pet:</strong> ${appointment.petName}</li>
+						<li><strong>Doctor:</strong> Dr. ${doctor?.firstName || ""} ${doctor?.lastName || ""}</li>
+					</ul>
+					<p>Please be ready for your appointment. Thank you for using PetConnect.</p>
+					`);
+                appointment.reminderEveningSentAt = new Date();
+            }
+            if (!appointment.reminderMorningSentAt && now >= morningReminderAt) {
+                await (0, mailer_1.sendEmail)(user.email, "Appointment Reminder (Morning) - PetConnect", `
+					<h3>Appointment Reminder</h3>
+					<p>Dear ${user.firstName || "Customer"},</p>
+					<p>This is your morning reminder for today's appointment.</p>
+					<ul>
+						<li><strong>Date:</strong> ${new Date(appointment.date).toLocaleDateString()}</li>
+						<li><strong>Time:</strong> ${appointment.timeSlot}</li>
+						<li><strong>Pet:</strong> ${appointment.petName}</li>
+						<li><strong>Doctor:</strong> Dr. ${doctor?.firstName || ""} ${doctor?.lastName || ""}</li>
+					</ul>
+					<p>Please arrive 10 minutes early. Thank you for using PetConnect.</p>
+					`);
+                appointment.reminderMorningSentAt = new Date();
+            }
+            if (appointment.isModified("reminderEveningSentAt") || appointment.isModified("reminderMorningSentAt")) {
+                await appointment.save();
+            }
+        }
+    }
+    catch (error) {
+        console.error("Appointment reminder processing error:", error);
+    }
+}
 async function getAvailability(req, res) {
     try {
         const { doctorId, date } = req.query;
@@ -68,6 +160,7 @@ async function getAvailability(req, res) {
         const baseSlots = (0, slotValidation_1.generateSlotsForDay)(selectedDate, entry.startHour, entry.endHour, doctor.appointmentDuration || 30);
         const sameDayAppointments = await Appointment_1.default.find({
             doctor: doctorId,
+            status: { $ne: "cancelled" },
             date: {
                 $gte: new Date(new Date(date).setHours(0, 0, 0, 0)),
                 $lte: new Date(new Date(date).setHours(23, 59, 59, 999))
@@ -112,6 +205,7 @@ async function createAppointment(req, res) {
         // Check for conflicts
         const conflict = await Appointment_1.default.findOne({
             doctor: doctorId,
+            status: { $ne: "cancelled" },
             date: {
                 $gte: new Date(new Date(date).setHours(0, 0, 0, 0)),
                 $lte: new Date(new Date(date).setHours(23, 59, 59, 999))
@@ -119,7 +213,18 @@ async function createAppointment(req, res) {
             $or: [{ timeSlot }, { timeSlot: { $in: generated.filter((slot) => (0, slotValidation_1.slotOverlaps)(slot, timeSlot)) } }]
         });
         if (conflict)
-            return res.status(409).json({ message: "Selected timeSlot is already booked" });
+            return res.status(409).json({ message: "Selected timeSlot is already booked for this doctor" });
+        const userConflict = await Appointment_1.default.findOne({
+            user,
+            status: { $ne: "cancelled" },
+            date: {
+                $gte: new Date(new Date(date).setHours(0, 0, 0, 0)),
+                $lte: new Date(new Date(date).setHours(23, 59, 59, 999))
+            },
+            $or: [{ timeSlot }, { timeSlot: { $in: generated.filter((slot) => (0, slotValidation_1.slotOverlaps)(slot, timeSlot)) } }]
+        });
+        if (userConflict)
+            return res.status(409).json({ message: "You already have an appointment during this time" });
         const created = await Appointment_1.default.create({
             user,
             doctor: doctorId,
@@ -135,6 +240,17 @@ async function createAppointment(req, res) {
             appointmentDuration: doctor.appointmentDuration || 30,
             payment: { status: "pending", amount: doctor.bookingFee || 0 }
         });
+        // Send email since it's booked (direct creation)
+        const userData = await User_1.default.findById(user).select("email firstName");
+        if (userData && userData.email) {
+            (0, mailer_1.sendEmail)(userData.email, "Appointment Request Received - PetConnect", `
+				<h3>Your Appointment Request</h3>
+				<p>Dear ${userData.firstName || 'Customer'},</p>
+				<p>We've received your appointment request for <strong>${petName}</strong> on <strong>${selectedDate.toLocaleDateString()}</strong> at <strong>${timeSlot}</strong>.</p>
+				<p>Status: Pending confirmation.</p>
+				<p>Thank you for using PetConnect!</p>
+				`);
+        }
         return res.status(201).json({ message: "Appointment booked", appointment: created });
     }
     catch (error) {
@@ -203,6 +319,7 @@ async function initiateAppointmentPayment(req, res) {
         }
         const conflict = await Appointment_1.default.findOne({
             doctor: doctorId,
+            status: { $ne: "cancelled" },
             date: {
                 $gte: new Date(new Date(date).setHours(0, 0, 0, 0)),
                 $lte: new Date(new Date(date).setHours(23, 59, 59, 999))
@@ -210,7 +327,18 @@ async function initiateAppointmentPayment(req, res) {
             $or: [{ timeSlot }, { timeSlot: { $in: generated.filter((slot) => (0, slotValidation_1.slotOverlaps)(slot, timeSlot)) } }]
         });
         if (conflict)
-            return res.status(409).json({ message: "Selected timeSlot is already booked" });
+            return res.status(409).json({ message: "Selected timeSlot is already booked for this doctor" });
+        const userConflict = await Appointment_1.default.findOne({
+            user,
+            status: { $ne: "cancelled" },
+            date: {
+                $gte: new Date(new Date(date).setHours(0, 0, 0, 0)),
+                $lte: new Date(new Date(date).setHours(23, 59, 59, 999))
+            },
+            $or: [{ timeSlot }, { timeSlot: { $in: generated.filter((slot) => (0, slotValidation_1.slotOverlaps)(slot, timeSlot)) } }]
+        });
+        if (userConflict)
+            return res.status(409).json({ message: "You already have an appointment during this time" });
         const amount = doctor.bookingFee || 0;
         const created = await Appointment_1.default.create({
             user,
@@ -251,7 +379,7 @@ async function initiateAppointmentPayment(req, res) {
 async function verifyAppointmentPayment(req, res) {
     try {
         const { appointmentId, status, refId } = req.body;
-        const appointment = await Appointment_1.default.findById(appointmentId);
+        const appointment = await Appointment_1.default.findById(appointmentId).populate("user", "email firstName").populate("doctor", "firstName lastName");
         if (!appointment)
             return res.status(404).json({ message: "Appointment not found" });
         if (status === "COMPLETE" || status === "success") {
@@ -259,8 +387,27 @@ async function verifyAppointmentPayment(req, res) {
             appointment.payment.method = "esewa";
             appointment.payment.transactionId = refId || req.body.transaction_code;
             appointment.payment.paidAt = new Date();
+            const commissionRate = 0.10;
+            appointment.payment.platformFee = appointment.payment.amount * commissionRate;
+            appointment.payment.netAmount = appointment.payment.amount - appointment.payment.platformFee;
             appointment.status = "confirmed";
             await appointment.save();
+            const user = appointment.user;
+            const doc = appointment.doctor;
+            if (user && user.email) {
+                (0, mailer_1.sendEmail)(user.email, "Appointment Confirmed - PetConnect", `
+					<h3>Your Appointment is Confirmed!</h3>
+					<p>Dear ${user.firstName || 'Customer'},</p>
+					<p>Your appointment with Dr. ${doc?.firstName || ''} ${doc?.lastName || ''} has been successfully paid and confirmed.</p>
+					<ul>
+						<li><strong>Date:</strong> ${new Date(appointment.date).toLocaleDateString()}</li>
+						<li><strong>Time Slot:</strong> ${appointment.timeSlot}</li>
+						<li><strong>Pet Name:</strong> ${appointment.petName}</li>
+						<li><strong>Reason:</strong> ${appointment.reason}</li>
+					</ul>
+					<p>Thank you for using PetConnect!</p>
+					`);
+            }
         }
         else {
             appointment.payment.status = "pending";

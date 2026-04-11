@@ -1,6 +1,7 @@
 import express from "express";
 import swaggerUi from "swagger-ui-express";
 import swaggerJSDoc from "swagger-jsdoc";
+import path from "path";
 import appointmentRoutes from "./routes/appointments";
 import authRoutes from "./routes/auth";
 import petRoutes from "./routes/pets";
@@ -9,6 +10,7 @@ import lostFoundRoutes from "./routes/lostFound";
 import charityRoutes from "./routes/charity";
 import pharmacyRoutes from "./routes/pharmacy";
 import adminRoutes from "./routes/admin";
+import reviewRoutes from "./routes/reviews";
 
 /**
  * @swagger
@@ -171,6 +173,7 @@ app.use((req, res, next) => {
 
 // Global middleware
 app.use(express.json());
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 /**
  * @swagger
@@ -220,6 +223,7 @@ app.use("/api/lost-found", lostFoundRoutes);
 app.use("/api/charity", charityRoutes);
 app.use("/api/pharmacy", pharmacyRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/reviews", reviewRoutes);
 
 // Swagger setup
 const swaggerSpec = swaggerJSDoc({
@@ -228,6 +232,15 @@ const swaggerSpec = swaggerJSDoc({
 		info: {
 			title: "PetConnect API",
 			version: "1.0.0"
+		},
+		components: {
+			securitySchemes: {
+				bearerAuth: {
+					type: "http",
+					scheme: "bearer",
+					bearerFormat: "JWT"
+				}
+			}
 		},
 		servers: [
 			{ url: "http://localhost:5555", description: "Local server" }

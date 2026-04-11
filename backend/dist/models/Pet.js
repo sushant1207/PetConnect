@@ -36,8 +36,10 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
 const petSchema = new mongoose_1.Schema({
     ownerId: { type: mongoose_1.Schema.Types.ObjectId, ref: "User", required: true },
+    petId: { type: String, unique: true, sparse: true, index: true },
     name: { type: String, required: true, trim: true },
     species: { type: String, enum: ["dog", "cat", "bird", "rabbit", "other"], required: true },
+    isActive: { type: Boolean, default: true, index: true },
     breed: String,
     age: Number,
     gender: { type: String, enum: ["male", "female", "unknown"] },

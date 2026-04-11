@@ -6,10 +6,70 @@ import { AuthRequest } from "../utils/auth";
 import { buildEsewaFormData } from "../utils/esewa";
 import { sendEmail } from "../utils/mailer";
 
+const parseNumber = (value: any, fallback = 0): number => {
+	if (value === undefined || value === null || value === "") return fallback;
+	const parsed = Number(value);
+	return Number.isNaN(parsed) ? fallback : parsed;
+};
+
+const parseBoolean = (value: any, fallback: boolean): boolean => {
+	if (typeof value === "boolean") return value;
+	if (typeof value === "string") {
+		if (value.toLowerCase() === "true") return true;
+		if (value.toLowerCase() === "false") return false;
+	}
+	return fallback;
+};
+
+const parseImages = (value: any): Array<{ public_id: string; url: string }> => {
+	if (!value) return [];
+	if (Array.isArray(value)) return value;
+	if (typeof value === "string") {
+		try {
+			const parsed = JSON.parse(value);
+			return Array.isArray(parsed) ? parsed : [];
+		} catch {
+			return [];
+		}
+	}
+	return [];
+};
+
+const getUploadedProductImages = (req: AuthRequest): Array<{ public_id: string; url: string }> => {
+	const files = (req as any).files as { images?: Express.Multer.File[] } | Express.Multer.File[] | undefined;
+	const singleFile = (req as any).file as Express.Multer.File | undefined;
+
+	let uploadedFiles: Express.Multer.File[] = [];
+	if (Array.isArray(files)) {
+		uploadedFiles = files;
+	} else if (files && Array.isArray(files.images)) {
+		uploadedFiles = files.images;
+	}
+
+	if (singleFile) {
+		uploadedFiles.push(singleFile);
+	}
+
+	return uploadedFiles.map((file) => ({
+		public_id: file.filename,
+		url: `/uploads/products/${file.filename}`
+	}));
+};
+
 // Pharmacy adds/creates a product
 export const createProduct = async (req: AuthRequest, res: Response): Promise<void> => {
 	try {
-		const { name, description, price, category, stock, images, featured, isActive } = req.body;
+		const { name, description, category } = req.body;
+		const price = parseNumber(req.body.price);
+		const stock = parseNumber(req.body.stock);
+		const featured = parseBoolean(req.body.featured, false);
+		const isActive = parseBoolean(req.body.isActive, true);
+		const uploadedImages = getUploadedProductImages(req);
+		const bodyImages = parseImages(req.body.images);
+
+		const normalizedImages = uploadedImages.length > 0
+			? uploadedImages
+			: bodyImages;
 
 		// Verify user is pharmacy/admin
 		if (req.user?.role !== "pharmacy" && req.user?.role !== "admin") {
@@ -23,9 +83,9 @@ export const createProduct = async (req: AuthRequest, res: Response): Promise<vo
 			price,
 			category,
 			stock,
-			images: images || [],
-			featured: featured || false,
-			isActive: typeof isActive === "boolean" ? isActive : true,
+			images: normalizedImages,
+			featured,
+			isActive,
 			pharmacyId: req.user?.id
 		});
 
@@ -48,7 +108,8 @@ export const createProduct = async (req: AuthRequest, res: Response): Promise<vo
 export const updateProduct = async (req: AuthRequest, res: Response): Promise<void> => {
 	try {
 		const { id } = req.params;
-		const { name, description, price, category, stock, images, featured, isActive } = req.body;
+		const uploadedImages = getUploadedProductImages(req);
+		const parsedImages = parseImages(req.body.images);
 
 		// Verify user is pharmacy/admin
 		if (req.user?.role !== "pharmacy" && req.user?.role !== "admin") {
@@ -56,9 +117,19 @@ export const updateProduct = async (req: AuthRequest, res: Response): Promise<vo
 			return;
 		}
 
-		const updateData: any = { name, description, price, category, stock, images, featured };
-		if (typeof isActive === "boolean") {
-			updateData.isActive = isActive;
+		const updateData: any = {};
+		if (req.body.name !== undefined) updateData.name = req.body.name;
+		if (req.body.description !== undefined) updateData.description = req.body.description;
+		if (req.body.category !== undefined) updateData.category = req.body.category;
+		if (req.body.price !== undefined) updateData.price = parseNumber(req.body.price);
+		if (req.body.stock !== undefined) updateData.stock = parseNumber(req.body.stock);
+		if (req.body.featured !== undefined) updateData.featured = parseBoolean(req.body.featured, false);
+		if (req.body.isActive !== undefined) updateData.isActive = parseBoolean(req.body.isActive, true);
+
+		if (uploadedImages.length > 0) {
+			updateData.images = uploadedImages;
+		} else if (req.body.images !== undefined) {
+			updateData.images = parsedImages;
 		}
 
 		let product = await Product.findById(id);
@@ -332,38 +403,82 @@ export const initiateOrderPayment = async (req: AuthRequest, res: Response): Pro
 // Verify order payment after eSewa callback
 export const verifyOrderPayment = async (req: Request, res: Response): Promise<void> => {
 	try {
-		const { orderId, status, refId } = req.body;
+		const { orderId, status, refId, transactionUuid, transaction_uuid } = req.body;
+		const resolvedOrderId = orderId || transactionUuid || transaction_uuid;
 
-		const order = await Order.findById(orderId);
+		if (!resolvedOrderId) {
+			res.status(400).json({ success: false, message: "orderId or transactionUuid is required" });
+			return;
+		}
+
+		const order = await Order.findById(resolvedOrderId);
 		if (!order) {
 			res.status(404).json({ success: false, message: "Order not found" });
 			return;
 		}
 
 		if (status === "success" || status === "COMPLETE") {
+			const alreadyCompleted = order.paymentStatus === "completed";
 			order.paymentStatus = "completed";
 			order.status = "processing";
 			order.esewaRefId = refId || (req.body as any).transaction_code;
+
+			const commissionRate = 0.10;
+			order.platformFee = order.totalAmount * commissionRate;
+			order.netAmount = order.totalAmount - order.platformFee;
+
 			await order.save();
 
-			// Reduce stock on success
-			for (const item of order.items) {
-				await Product.findByIdAndUpdate(item.productId, { $inc: { stock: -item.quantity } });
+			// Reduce stock only once per successfully completed payment.
+			if (!alreadyCompleted) {
+				for (const item of order.items) {
+					await Product.findByIdAndUpdate(item.productId, { $inc: { stock: -item.quantity } });
+				}
 			}
 
 			const user = await User.findById(order.userId).select("email firstName");
 			if (user && user.email) {
-				const itemList = order.items.map((i: any) => `<li>${i.quantity}x ${i.productName} (Rs. ${i.price})</li>`).join("");
+				const itemList = order.items.map((i: any) => `
+					<tr>
+						<td style="padding: 10px; border-bottom: 1px solid #ddd;">${i.productName}</td>
+						<td style="padding: 10px; border-bottom: 1px solid #ddd;">${i.quantity}</td>
+						<td style="padding: 10px; border-bottom: 1px solid #ddd;">Rs. ${i.price}</td>
+						<td style="padding: 10px; border-bottom: 1px solid #ddd;">Rs. ${i.price * i.quantity}</td>
+					</tr>
+				`).join("");
 				sendEmail(
 					user.email,
-					"Order Confirmed - PetConnect Pharmacy",
+					"Invoice & Order Confirmation - PetConnect Pharmacy",
 					`
-					<h3>Your Order is Confirmed!</h3>
-					<p>Dear ${user.firstName || 'Customer'},</p>
-					<p>Your payment was successful and your order is now processing.</p>
-					<ul>${itemList}</ul>
-					<p><strong>Total:</strong> Rs. ${order.totalAmount}</p>
-					<p>Thank you for using PetConnect Pharmacy!</p>
+					<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #eee; padding: 20px; border-radius: 8px;">
+						<h2 style="color: #6366f1;">PetConnect Pharmacy</h2>
+						<h3 style="color: #333; margin-bottom: 5px;">Invoice & Order Confirmation</h3>
+						<p style="color: #666; font-size: 14px; margin-top: 0;">Order ID: ${order._id}</p>
+						<p>Dear ${user.firstName || 'Customer'},</p>
+						<p>Your payment was successful and your order is now processing. Here are your order and invoice details:</p>
+						
+						<table style="width: 100%; border-collapse: collapse; margin-top: 20px; text-align: left;">
+							<thead>
+								<tr style="background-color: #f8fafc;">
+									<th style="padding: 10px; border-bottom: 2px solid #ddd;">Item</th>
+									<th style="padding: 10px; border-bottom: 2px solid #ddd;">Qty</th>
+									<th style="padding: 10px; border-bottom: 2px solid #ddd;">Price</th>
+									<th style="padding: 10px; border-bottom: 2px solid #ddd;">Total</th>
+								</tr>
+							</thead>
+							<tbody>
+								${itemList}
+							</tbody>
+							<tfoot>
+								<tr>
+									<td colspan="3" style="padding: 10px; text-align: right; font-weight: bold;">Grand Total:</td>
+									<td style="padding: 10px; font-weight: bold;">Rs. ${order.totalAmount}</td>
+								</tr>
+							</tfoot>
+						</table>
+						
+						<p style="margin-top: 30px; font-size: 13px; color: #888;">Thank you for your purchase!<br>PetConnect Pharmacy Team</p>
+					</div>
 					`
 				);
 			}
@@ -442,21 +557,53 @@ export const createOrder = async (req: AuthRequest, res: Response): Promise<void
 			shippingAddress: shippingAddress || {},
 			paymentMethod: paymentMethod || "cash",
 			status: "pending",
-			paymentStatus: paymentMethod === "cash" ? "pending" : "completed"
+			paymentStatus: paymentMethod === "cash" ? "pending" : "completed",
+			platformFee: totalAmount * 0.10,
+			netAmount: totalAmount - (totalAmount * 0.10)
 		});
 
 		if (user && user.email) {
-			const itemList = orderItems.map((i) => `<li>${i.quantity}x ${i.productName} (Rs. ${i.price})</li>`).join("");
+			const itemList = orderItems.map((i) => `
+				<tr>
+					<td style="padding: 10px; border-bottom: 1px solid #ddd;">${i.productName}</td>
+					<td style="padding: 10px; border-bottom: 1px solid #ddd;">${i.quantity}</td>
+					<td style="padding: 10px; border-bottom: 1px solid #ddd;">Rs. ${i.price}</td>
+					<td style="padding: 10px; border-bottom: 1px solid #ddd;">Rs. ${i.price * i.quantity}</td>
+				</tr>
+			`).join("");
 			sendEmail(
 				user.email,
-				"Order Placed - PetConnect Pharmacy",
+				"Invoice & Order Placed - PetConnect Pharmacy",
 				`
-				<h3>Your Order has been placed</h3>
-				<p>Dear ${user.firstName || 'Customer'},</p>
-				<p>We've received your order. Payment method: ${paymentMethod}.</p>
-				<ul>${itemList}</ul>
-				<p><strong>Total:</strong> Rs. ${order.totalAmount}</p>
-				<p>Thank you for using PetConnect Pharmacy!</p>
+				<div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #eee; padding: 20px; border-radius: 8px;">
+					<h2 style="color: #6366f1;">PetConnect Pharmacy</h2>
+					<h3 style="color: #333; margin-bottom: 5px;">Invoice & Order Placed</h3>
+					<p style="color: #666; font-size: 14px; margin-top: 0;">Order ID: ${order._id}</p>
+					<p>Dear ${user.firstName || 'Customer'},</p>
+					<p>We've received your order. Payment method: ${paymentMethod}. Here is your invoice:</p>
+					
+					<table style="width: 100%; border-collapse: collapse; margin-top: 20px; text-align: left;">
+						<thead>
+							<tr style="background-color: #f8fafc;">
+								<th style="padding: 10px; border-bottom: 2px solid #ddd;">Item</th>
+								<th style="padding: 10px; border-bottom: 2px solid #ddd;">Qty</th>
+								<th style="padding: 10px; border-bottom: 2px solid #ddd;">Price</th>
+								<th style="padding: 10px; border-bottom: 2px solid #ddd;">Total</th>
+							</tr>
+						</thead>
+						<tbody>
+							${itemList}
+						</tbody>
+						<tfoot>
+							<tr>
+								<td colspan="3" style="padding: 10px; text-align: right; font-weight: bold;">Grand Total:</td>
+								<td style="padding: 10px; font-weight: bold;">Rs. ${order.totalAmount}</td>
+							</tr>
+						</tfoot>
+					</table>
+					
+					<p style="margin-top: 30px; font-size: 13px; color: #888;">Thank you for using PetConnect Pharmacy!</p>
+				</div>
 				`
 			);
 		}

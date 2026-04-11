@@ -6,8 +6,16 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const swagger_ui_express_1 = __importDefault(require("swagger-ui-express"));
 const swagger_jsdoc_1 = __importDefault(require("swagger-jsdoc"));
+const path_1 = __importDefault(require("path"));
 const appointments_1 = __importDefault(require("./routes/appointments"));
 const auth_1 = __importDefault(require("./routes/auth"));
+const pets_1 = __importDefault(require("./routes/pets"));
+const doctors_1 = __importDefault(require("./routes/doctors"));
+const lostFound_1 = __importDefault(require("./routes/lostFound"));
+const charity_1 = __importDefault(require("./routes/charity"));
+const pharmacy_1 = __importDefault(require("./routes/pharmacy"));
+const admin_1 = __importDefault(require("./routes/admin"));
+const reviews_1 = __importDefault(require("./routes/reviews"));
 /**
  * @swagger
  * components:
@@ -155,8 +163,19 @@ const auth_1 = __importDefault(require("./routes/auth"));
  *           type: string
  */
 const app = (0, express_1.default)();
+// CORS middleware
+app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
+    if (req.method === "OPTIONS") {
+        return res.sendStatus(200);
+    }
+    next();
+});
 // Global middleware
 app.use(express_1.default.json());
+app.use("/uploads", express_1.default.static(path_1.default.join(process.cwd(), "uploads")));
 /**
  * @swagger
  * /:
@@ -197,6 +216,13 @@ app.get("/health", (_req, res) => {
 // Routes
 app.use("/api/appointments", appointments_1.default);
 app.use("/api/auth", auth_1.default);
+app.use("/api/pets", pets_1.default);
+app.use("/api/doctors", doctors_1.default);
+app.use("/api/lost-found", lostFound_1.default);
+app.use("/api/charity", charity_1.default);
+app.use("/api/pharmacy", pharmacy_1.default);
+app.use("/api/admin", admin_1.default);
+app.use("/api/reviews", reviews_1.default);
 // Swagger setup
 const swaggerSpec = (0, swagger_jsdoc_1.default)({
     definition: {
@@ -204,6 +230,15 @@ const swaggerSpec = (0, swagger_jsdoc_1.default)({
         info: {
             title: "PetConnect API",
             version: "1.0.0"
+        },
+        components: {
+            securitySchemes: {
+                bearerAuth: {
+                    type: "http",
+                    scheme: "bearer",
+                    bearerFormat: "JWT"
+                }
+            }
         },
         servers: [
             { url: "http://localhost:5555", description: "Local server" }

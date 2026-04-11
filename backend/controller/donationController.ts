@@ -4,12 +4,36 @@ import { Charity } from "../models/Charity";
 import { AuthRequest } from "../utils/auth";
 import { buildEsewaFormData } from "../utils/esewa";
 
+function decodeEsewaPayload(data: string): { transactionUuid?: string; status?: string } {
+	try {
+		const normalized = data
+			.trim()
+			.replace(/\s/g, "+")
+			.replace(/-/g, "+")
+			.replace(/_/g, "/");
+		const padLength = (4 - (normalized.length % 4)) % 4;
+		const padded = normalized + "=".repeat(padLength);
+		const decoded = JSON.parse(Buffer.from(padded, "base64").toString("utf8"));
+		return {
+			transactionUuid: decoded.transaction_uuid || decoded.transactionUuid,
+			status: decoded.status,
+		};
+	} catch {
+		return {};
+	}
+}
+
 export async function initiateDonation(req: AuthRequest, res: Response) {
 	try {
 		const userId = req.user?.id;
 		if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-		const { charityId, amount, paymentMethod } = req.body;
+		const charityId = req.body.charityId || req.body.campaignId;
+		const { amount, paymentMethod } = req.body;
+
+		if (!charityId || !amount) {
+			return res.status(400).json({ message: "charityId (or campaignId) and amount are required" });
+		}
 
 		const charity = await Charity.findById(charityId);
 		if (!charity) return res.status(404).json({ message: "Campaign not found" });
@@ -43,26 +67,41 @@ export async function initiateDonation(req: AuthRequest, res: Response) {
 
 export async function verifyDonation(req: Request, res: Response) {
 	try {
-		const { donationId, status } = req.body;
+		const { donationId, status, transactionUuid, transaction_uuid, data } = req.body;
+		const decodedPayload = typeof data === "string" ? decodeEsewaPayload(data) : {};
+		const resolvedDonationId = donationId || transactionUuid || transaction_uuid || decodedPayload.transactionUuid;
+		if (!resolvedDonationId) {
+			return res.status(400).json({ message: "donationId or transactionUuid is required" });
+		}
 		
-		const donation = await Donation.findById(donationId);
+		const donation = await Donation.findById(resolvedDonationId);
 		if (!donation) return res.status(404).json({ message: "Donation not found" });
+		let updatedCharity: any = null;
+		const normalized = String(status || decodedPayload.status || "").toLowerCase();
+		const isSuccess = ["success", "complete", "completed", "paid"].includes(normalized);
 
-		if (status === "success") {
+		if (isSuccess) {
+			const wasCompleted = donation.status === "completed";
 			donation.status = "completed";
 			await donation.save();
 
-			// Update charity raised amount
-			const charity = await Charity.findById(donation.charityId);
-			if (charity) {
-				await (charity as any).refreshRaisedAmount();
+			// Update charity raised amount only when moving to completed for the first time.
+			if (!wasCompleted) {
+				const charity = await Charity.findById(donation.charityId);
+				if (charity) {
+					await (charity as any).refreshRaisedAmount();
+					updatedCharity = charity;
+				}
+			} else {
+				updatedCharity = await Charity.findById(donation.charityId);
 			}
 		} else {
 			donation.status = "failed";
 			await donation.save();
+			updatedCharity = await Charity.findById(donation.charityId);
 		}
 
-		return res.status(200).json(donation);
+		return res.status(200).json({ donation, charity: updatedCharity });
 	} catch (error: any) {
 		return res.status(500).json({ message: error.message || "Failed to verify donation" });
 	}

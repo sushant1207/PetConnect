@@ -51,6 +51,8 @@ const productSchema = new mongoose_1.Schema({
         }
     ],
     featured: { type: Boolean, default: false },
+    isActive: { type: Boolean, default: true },
+    pharmacyId: { type: mongoose_1.Schema.Types.ObjectId, ref: "User" },
     createdAt: { type: Date, default: Date.now }
 });
 exports.default = mongoose_1.default.model("Product", productSchema);

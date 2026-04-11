@@ -36,6 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.initialCharities = exports.Charity = void 0;
 const mongoose_1 = __importStar(require("mongoose"));
 const charitySchema = new mongoose_1.Schema({
+    ownerId: { type: mongoose_1.Schema.Types.ObjectId, ref: "User", required: true },
     name: { type: String, required: [true, "Charity name is required"], trim: true },
     description: { type: String, required: [true, "Charity description is required"], trim: true },
     image: {
