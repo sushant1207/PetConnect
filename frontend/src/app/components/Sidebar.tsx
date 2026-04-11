@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -82,19 +83,44 @@ const roleLabels: Record<string, string> = {
 export function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [logoutCountdown, setLogoutCountdown] = useState<number | null>(null);
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    router.push("/login");
+    if (logoutCountdown !== null) return;
+    setLogoutCountdown(5);
   };
 
-  return (
-    <aside className="w-64 h-screen border-r border-border bg-card/50 backdrop-blur-sm flex-shrink-0">
-      <div className="flex h-full flex-col">
+  useEffect(() => {
+    if (logoutCountdown === null) return;
+
+    if (logoutCountdown === 0) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      localStorage.removeItem("userEmail");
+      localStorage.removeItem("userRole");
+      localStorage.removeItem("isUsernameSet");
+      router.push("/login");
+      setLogoutCountdown(null);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setLogoutCountdown((prev) => (prev === null ? null : prev - 1));
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [logoutCountdown, router]);
+
+  const renderSidebarContent = (isMobile = false) => (
+    <>
         {/* Logo/Header */}
         <div className="border-b border-border p-6">
-          <Link href={user.role === "veterinarian" ? "/dashboard/vet" : user.role === "admin" ? "/admin/dashboard" : "/dashboard"} className="flex items-center gap-2">
+          <Link
+            href={user.role === "veterinarian" ? "/dashboard/vet" : user.role === "admin" ? "/admin/dashboard" : "/dashboard"}
+            className="flex items-center gap-2"
+            onClick={() => isMobile && setMobileOpen(false)}
+          >
             <div className="text-2xl">🐾</div>
             <div>
               <div className="font-bold text-lg">PetConnect</div>
@@ -131,6 +157,7 @@ export function Sidebar({ user }: SidebarProps) {
                 <li key={item.href}>
                   <Link
                     href={item.href}
+                    onClick={() => isMobile && setMobileOpen(false)}
                     className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all ${
                       isActive
                         ? "bg-primary/10 text-primary border border-primary/20"
@@ -150,16 +177,54 @@ export function Sidebar({ user }: SidebarProps) {
         <div className="border-t border-border p-4 space-y-2">
           <button
             onClick={handleLogout}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-2.5 text-sm font-semibold text-destructive transition-all hover:bg-destructive/10 hover:border-destructive/30 hover:shadow-sm"
+            disabled={logoutCountdown !== null}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-2.5 text-sm font-semibold text-destructive transition-all hover:bg-destructive/10 hover:border-destructive/30 hover:shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
           >
-            <span>Logout</span>
+            <span>{logoutCountdown !== null ? `Logging out in ${logoutCountdown}s...` : "Logout"}</span>
           </button>
           <p className="text-xs text-center text-muted-foreground">
             {user.firstName || user.email}
           </p>
         </div>
-      </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setMobileOpen(true)}
+        className="md:hidden fixed top-4 left-4 z-50 inline-flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card text-foreground shadow-sm"
+        aria-label="Open menu"
+      >
+        ☰
+      </button>
+
+      {mobileOpen && (
+        <div className="md:hidden fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
+          <aside className="absolute left-0 top-0 h-full w-72 border-r border-border bg-card/95 backdrop-blur-sm">
+            <div className="flex h-full flex-col">
+              <div className="flex justify-end p-3 border-b border-border">
+                <button
+                  type="button"
+                  onClick={() => setMobileOpen(false)}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border"
+                  aria-label="Close menu"
+                >
+                  X
+                </button>
+              </div>
+              {renderSidebarContent(true)}
+            </div>
+          </aside>
+        </div>
+      )}
+
+      <aside className="hidden md:block w-64 h-screen border-r border-border bg-card/50 backdrop-blur-sm flex-shrink-0">
+        <div className="flex h-full flex-col">{renderSidebarContent(false)}</div>
+      </aside>
+    </>
   );
 }
 

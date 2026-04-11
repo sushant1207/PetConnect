@@ -106,9 +106,9 @@ export default function DashboardPage() {
   const isPharmacy = user.role === "pharmacy";
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex min-h-screen bg-background">
       <Sidebar user={user} />
-      <main className="flex-1 overflow-y-auto p-6 md:p-8 lg:p-12">
+      <main className="flex-1 overflow-y-auto p-4 pt-16 md:p-8 lg:p-12">
         <div className="max-w-7xl mx-auto">
           <div className="mb-8">
             <h1 className="text-3xl font-bold mb-2">

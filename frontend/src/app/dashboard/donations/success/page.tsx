@@ -8,41 +8,51 @@ function SuccessContent() {
 	const router = useRouter();
 	const searchParams = useSearchParams();
 	const dataParam = searchParams.get("data");
-	let donationId = searchParams.get("donationId");
+	const donationIdParam = searchParams.get("donationId");
 
 	const [verifying, setVerifying] = useState(true);
 
 	useEffect(() => {
-		if (!donationId && dataParam) {
+		let resolvedDonationId: string | null = donationIdParam;
+		let decodedStatus: string | undefined;
+		let decodedTxnUuid: string | undefined;
+
+		if (dataParam) {
 			try {
-				const decoded = JSON.parse(atob(dataParam));
-				donationId = decoded.transaction_uuid;
+				const normalizeBase64 = (value: string) => {
+					const base64 = value.trim().replace(/\s/g, "+").replace(/-/g, "+").replace(/_/g, "/");
+					const padLength = (4 - (base64.length % 4)) % 4;
+					return base64 + "=".repeat(padLength);
+				};
+				const decoded = JSON.parse(atob(normalizeBase64(dataParam)));
+				decodedTxnUuid = decoded.transaction_uuid || decoded.transactionUuid;
+				decodedStatus = decoded.status;
+				if (!resolvedDonationId && decodedTxnUuid) {
+					resolvedDonationId = decodedTxnUuid;
+				}
 			} catch (e) {
 				console.error("Failed to decode eSewa data parameter:", e);
 			}
 		}
 
-		if (donationId) {
-			verifyPayment(donationId);
+		if (resolvedDonationId) {
+			verifyPayment(resolvedDonationId, decodedStatus, decodedTxnUuid, dataParam || undefined);
+		} else if (dataParam) {
+			verifyPayment("", decodedStatus, decodedTxnUuid, dataParam);
 		} else {
 			setVerifying(false);
 		}
-	}, [donationId, dataParam]);
+	}, [donationIdParam, dataParam]);
 
-	const verifyPayment = async (id: string) => {
+	const verifyPayment = async (id: string, decodedStatus?: string, decodedTxnUuid?: string, rawData?: string) => {
 		try {
-			let status = "success";
-			if (dataParam) {
-				try {
-					const decoded = JSON.parse(atob(dataParam));
-					status = decoded.status === "COMPLETE" ? "success" : "failed";
-				} catch (e) {}
-			}
+			const normalized = String(decodedStatus || "COMPLETE").toUpperCase();
+			const status = normalized === "COMPLETE" || normalized === "SUCCESS" ? "success" : "failed";
 
 			const response = await fetch("http://localhost:5555/api/charity/verify", {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ donationId: id, status })
+				body: JSON.stringify({ donationId: id || undefined, status, transactionUuid: decodedTxnUuid, data: rawData })
 			});
 			if (response.ok) {
 				// Payment verified

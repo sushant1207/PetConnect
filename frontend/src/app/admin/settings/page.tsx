@@ -76,7 +76,7 @@ export default function AdminSettingsPage() {
 
   if (loading) return <div className="p-12 text-center font-bold tracking-widest uppercase animate-pulse text-slate-400">Booting Infrastructure Parameters...</div>;
 
-  const securitySettings = settings.filter(s => s.category === "security");
+  const securitySettings = settings.filter(s => s.category === "security" && s.key !== "ip_restriction");
   const commerceSettings = settings.filter(s => s.category === "commerce");
 
   return (
@@ -151,13 +151,6 @@ export default function AdminSettingsPage() {
                 </div>
               ))}
 
-              <div className="bg-white p-10 rounded-[3.5rem] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.03)] border border-slate-100 flex flex-col justify-center items-center">
-                 <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-4 italic">Infrastructure Integrity</p>
-                 <div className="w-20 h-20 bg-emerald-50 rounded-[2rem] flex items-center justify-center mb-4">
-                   <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-                 </div>
-                 <span className="text-xs font-black text-emerald-600 uppercase tracking-[0.2em]">All Systems Nominal</span>
-              </div>
             </div>
             
             <p className="text-center font-black text-slate-200 text-[10px] uppercase tracking-[0.5em] pt-10 select-none">PetConnect Dynamic Governance v2.5</p>

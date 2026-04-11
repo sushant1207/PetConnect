@@ -19,14 +19,13 @@ export default function CreateCampaignPage() {
 	const [loading, setLoading] = useState(true);
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState("");
+	const [imageFile, setImageFile] = useState<File | null>(null);
 
 	const [formData, setFormData] = useState({
 		name: "",
 		description: "",
 		goal: 0,
-		image: {
-			url: ""
-		}
+		imageUrl: ""
 	});
 
 	useEffect(() => {
@@ -59,13 +58,23 @@ export default function CreateCampaignPage() {
 
 		try {
 			const token = localStorage.getItem("token");
+			const payload = new FormData();
+			payload.append("name", formData.name);
+			payload.append("description", formData.description);
+			payload.append("goal", String(formData.goal));
+			if (formData.imageUrl.trim()) {
+				payload.append("imageUrl", formData.imageUrl.trim());
+			}
+			if (imageFile) {
+				payload.append("image", imageFile);
+			}
+
 			const response = await fetch("http://localhost:5555/api/charity/campaigns", {
 				method: "POST",
 				headers: {
-					"Content-Type": "application/json",
 					Authorization: `Bearer ${token}`
 				},
-				body: JSON.stringify(formData)
+				body: payload
 			});
 
 			if (response.ok) {
@@ -141,14 +150,25 @@ export default function CreateCampaignPage() {
 							</div>
 
 							<div className="space-y-2">
-								<label className="text-sm font-medium">Image URL (Optional)</label>
+								<label className="text-sm font-medium">Image URL (Optional Fallback)</label>
 								<input
 									type="url"
 									placeholder="https://images.unsplash.com/..."
 									className="w-full bg-background border border-border rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary"
-									value={formData.image.url}
-									onChange={(e) => setFormData({ ...formData, image: { ...formData.image, url: e.target.value } })}
+									value={formData.imageUrl}
+									onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
 								/>
+							</div>
+
+							<div className="space-y-2">
+								<label className="text-sm font-medium">Upload Image (Optional)</label>
+								<input
+									type="file"
+									accept="image/*"
+									className="w-full bg-background border border-border rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary"
+									onChange={(e) => setImageFile(e.target.files?.[0] || null)}
+								/>
+								<p className="text-xs text-muted-foreground">If both are provided, uploaded image will be used.</p>
 							</div>
 						</div>
 

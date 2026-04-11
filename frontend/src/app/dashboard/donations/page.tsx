@@ -33,6 +33,12 @@ export default function DonationsPage() {
 	const [campaigns, setCampaigns] = useState<Campaign[]>([]);
 	const [loading, setLoading] = useState(true);
 
+	const getCampaignImageUrl = (imageUrl?: string) => {
+		if (!imageUrl) return "https://placehold.co/600x400?text=Campaign";
+		if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) return imageUrl;
+		return `http://localhost:5555${imageUrl.startsWith("/") ? imageUrl : `/${imageUrl}`}`;
+	};
+
 	useEffect(() => {
 		const token = localStorage.getItem("token");
 		const userData = localStorage.getItem("user");
@@ -53,7 +59,7 @@ export default function DonationsPage() {
 
 	const fetchCampaigns = async () => {
 		try {
-			const response = await fetch("http://localhost:5555/api/charity/campaigns");
+			const response = await fetch(`http://localhost:5555/api/charity/campaigns?t=${Date.now()}`, { cache: "no-store" });
 			const data = await response.json();
 			if (response.ok) {
 				setCampaigns(data);
@@ -104,7 +110,7 @@ export default function DonationsPage() {
 									<div key={campaign._id} className="rounded-lg border border-border bg-card overflow-hidden shadow-sm hover:shadow-md transition-shadow flex flex-col">
 										<div className="h-48 overflow-hidden bg-muted">
 											<img 
-												src={campaign.image?.url || "https://placehold.co/600x400?text=Campaign"} 
+												src={getCampaignImageUrl(campaign.image?.url)} 
 												alt={campaign.name}
 												className="w-full h-full object-cover"
 											/>

@@ -15,6 +15,7 @@ interface User {
 
 export default function ReportPage() {
 	const router = useRouter();
+	const today = new Date().toISOString().split("T")[0];
 	const [user, setUser] = useState<User | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [submitting, setSubmitting] = useState(false);
@@ -25,7 +26,7 @@ export default function ReportPage() {
 		petType: "",
 		breed: "",
 		location: "",
-		date: new Date().toISOString().split("T")[0],
+		date: today,
 		description: "",
 		contact: {
 			name: "",
@@ -71,6 +72,12 @@ export default function ReportPage() {
 		e.preventDefault();
 		setSubmitting(true);
 		setError("");
+
+		if (formData.date > today) {
+			setError("Future dates are not allowed for lost/found reports.");
+			setSubmitting(false);
+			return;
+		}
 
 		try {
 			const token = localStorage.getItem("token");
@@ -162,7 +169,11 @@ export default function ReportPage() {
 									type="date"
 									className="w-full bg-background border border-border rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-primary"
 									value={formData.date}
-									onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+									max={today}
+									onChange={(e) => {
+										const nextDate = e.target.value;
+										setFormData({ ...formData, date: nextDate > today ? today : nextDate });
+									}}
 									required
 								/>
 							</div>

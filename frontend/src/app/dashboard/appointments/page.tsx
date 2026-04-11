@@ -36,11 +36,29 @@ interface Appointment {
   address?: string;
 }
 
+interface Review {
+  _id: string;
+  reviewer?: {
+    _id?: string;
+    firstName?: string;
+    lastName?: string;
+  } | string;
+  targetId: string;
+  targetModel: "Doctor" | "Product";
+  rating: number;
+  comment?: string;
+  createdAt: string;
+}
+
 export default function AppointmentsPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reviewByDoctorId, setReviewByDoctorId] = useState<Record<string, Review>>({});
+  const [reviewDrafts, setReviewDrafts] = useState<Record<string, { rating: number; comment: string }>>({});
+  const [reviewSubmittingId, setReviewSubmittingId] = useState<string | null>(null);
+  const [reviewErrorByAppointment, setReviewErrorByAppointment] = useState<Record<string, string>>({});
   
   // Filters & Search
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "confirmed" | "completed" | "cancelled">("all");
@@ -80,11 +98,128 @@ export default function AppointmentsPage() {
       });
       const data = await response.json();
       if (response.ok) {
-        setAppointments(data.appointments || []);
+        const list = data.appointments || [];
+        setAppointments(list);
+        await fetchExistingReviews(list, userId);
       }
     } catch (error) {
       console.error("Error fetching appointments:", error);
     }
+  };
+
+  const fetchExistingReviews = async (list: Appointment[], userId: string) => {
+    try {
+      const token = localStorage.getItem("token");
+      const completedDoctorIds = Array.from(
+        new Set(
+          list
+            .filter((apt) => apt.status === "completed" && apt.doctor?._id)
+            .map((apt) => apt.doctor._id)
+        )
+      );
+
+      if (completedDoctorIds.length === 0) {
+        setReviewByDoctorId({});
+        return;
+      }
+
+      const entries = await Promise.all(
+        completedDoctorIds.map(async (doctorId) => {
+          const res = await fetch(
+            `http://localhost:5555/api/reviews?targetId=${doctorId}&targetModel=Doctor`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+            }
+          );
+          const data = await res.json();
+          if (!res.ok) return [doctorId, null] as const;
+
+          const mine = (data.reviews || []).find((r: Review) => {
+            if (!r.reviewer) return false;
+            if (typeof r.reviewer === "string") return r.reviewer === userId;
+            return r.reviewer._id === userId;
+          });
+
+          return [doctorId, mine || null] as const;
+        })
+      );
+
+      const nextMap: Record<string, Review> = {};
+      for (const [doctorId, review] of entries) {
+        if (review) nextMap[doctorId] = review;
+      }
+      setReviewByDoctorId(nextMap);
+    } catch (error) {
+      console.error("Error loading reviews:", error);
+    }
+  };
+
+  const handleDraftChange = (appointmentId: string, field: "rating" | "comment", value: string | number) => {
+    setReviewDrafts((prev) => {
+      const current = prev[appointmentId] || { rating: 5, comment: "" };
+      return {
+        ...prev,
+        [appointmentId]: {
+          ...current,
+          [field]: value,
+        },
+      };
+    });
+  };
+
+  const handleSubmitReview = async (appointment: Appointment) => {
+    if (!user) return;
+
+    const draft = reviewDrafts[appointment._id] || { rating: 5, comment: "" };
+    if (draft.rating < 1 || draft.rating > 5) {
+      setReviewErrorByAppointment((prev) => ({ ...prev, [appointment._id]: "Rating must be between 1 and 5." }));
+      return;
+    }
+
+    setReviewErrorByAppointment((prev) => ({ ...prev, [appointment._id]: "" }));
+    setReviewSubmittingId(appointment._id);
+
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch("http://localhost:5555/api/reviews", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          targetId: appointment.doctor._id,
+          targetModel: "Doctor",
+          rating: draft.rating,
+          comment: draft.comment,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to submit review");
+      }
+
+      setReviewByDoctorId((prev) => ({
+        ...prev,
+        [appointment.doctor._id]: data.review,
+      }));
+      setReviewDrafts((prev) => ({
+        ...prev,
+        [appointment._id]: { rating: 5, comment: "" },
+      }));
+    } catch (error: any) {
+      setReviewErrorByAppointment((prev) => ({
+        ...prev,
+        [appointment._id]: error.message || "Failed to submit review",
+      }));
+    } finally {
+      setReviewSubmittingId(null);
+    }
+  };
+
+  const renderStars = (rating: number) => {
+    return "★".repeat(rating) + "☆".repeat(5 - rating);
   };
 
   const handleCancel = async (appointmentId: string) => {
@@ -337,6 +472,62 @@ export default function AppointmentsPage() {
                           >
                             Cancel Appointment
                           </button>
+                        </div>
+                      )}
+
+                      {appointment.status === "completed" && (
+                        <div className="mt-auto pt-3 border-t border-border/30">
+                          <h4 className="text-sm font-semibold mb-2">Review</h4>
+
+                          {reviewByDoctorId[appointment.doctor._id] ? (
+                            <div className="rounded-lg border border-green-200 bg-green-50 p-3">
+                              <p className="text-sm font-semibold text-green-800">
+                                {renderStars(reviewByDoctorId[appointment.doctor._id].rating)}
+                              </p>
+                              <p className="text-sm text-green-900 mt-1">
+                                {reviewByDoctorId[appointment.doctor._id].comment || "No comment provided."}
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-2">
+                                <label className="text-xs text-muted-foreground">Rating</label>
+                                <select
+                                  value={reviewDrafts[appointment._id]?.rating ?? 5}
+                                  onChange={(e) => handleDraftChange(appointment._id, "rating", Number(e.target.value))}
+                                  className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+                                >
+                                  <option value={5}>5</option>
+                                  <option value={4}>4</option>
+                                  <option value={3}>3</option>
+                                  <option value={2}>2</option>
+                                  <option value={1}>1</option>
+                                </select>
+                              </div>
+
+                              <textarea
+                                value={reviewDrafts[appointment._id]?.comment ?? ""}
+                                onChange={(e) => handleDraftChange(appointment._id, "comment", e.target.value)}
+                                rows={2}
+                                placeholder="Write your review about this completed appointment"
+                                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/50"
+                              />
+
+                              {reviewErrorByAppointment[appointment._id] && (
+                                <p className="text-xs text-destructive">{reviewErrorByAppointment[appointment._id]}</p>
+                              )}
+
+                              <div className="flex justify-end">
+                                <button
+                                  onClick={() => handleSubmitReview(appointment)}
+                                  disabled={reviewSubmittingId === appointment._id}
+                                  className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                                >
+                                  {reviewSubmittingId === appointment._id ? "Submitting..." : "Submit Review"}
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
