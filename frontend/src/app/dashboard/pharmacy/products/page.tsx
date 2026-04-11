@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "../../../components/Sidebar";
 import Link from "next/link";
+import { ConfirmModal } from "../../../components/ConfirmModal";
 
 interface User {
 	_id: string;
@@ -21,8 +22,17 @@ interface Product {
 	category: string;
 	stock: number;
 	isActive: boolean;
-	images?: string[];
+	images?: Array<string | { public_id?: string; url?: string }>;
 }
+
+const getImageUrl = (images?: Array<string | { public_id?: string; url?: string }>) => {
+	if (!images || images.length === 0) return "";
+	const first = images[0];
+	const raw = typeof first === "string" ? first : first?.url || "";
+	if (!raw) return "";
+	if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+	return `http://localhost:5555${raw}`;
+};
 
 export default function PharmacyProductsPage() {
 	const router = useRouter();
@@ -35,6 +45,11 @@ export default function PharmacyProductsPage() {
 	const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
 	const [sortOrder, setSortOrder] = useState<"name" | "stock" | "price">("name");
 	const [currentPage, setCurrentPage] = useState(1);
+	const [pendingAction, setPendingAction] = useState<
+		| { type: "delete"; productId: string; productName: string }
+		| { type: "toggle"; product: Product }
+		| null
+	>(null);
 	const ITEMS_PER_PAGE = 8;
 
 	useEffect(() => {
@@ -75,8 +90,7 @@ export default function PharmacyProductsPage() {
 		}
 	};
 
-	const handleDelete = async (id: string) => {
-		if (!confirm("Are you sure you want to delete this product?")) return;
+	const deleteProduct = async (id: string) => {
 		const token = localStorage.getItem("token");
 		try {
 			const res = await fetch(`http://localhost:5555/api/pharmacy/products/${id}`, {
@@ -92,7 +106,6 @@ export default function PharmacyProductsPage() {
 	};
 
 	const toggleStatus = async (p: Product) => {
-		if (!confirm(`Are you sure you want to mark this product as ${p.isActive ? "Inactive" : "Active"}?`)) return;
 		const token = localStorage.getItem("token");
 		try {
 			const res = await fetch(`http://localhost:5555/api/pharmacy/products/${p._id}`, {
@@ -118,6 +131,16 @@ export default function PharmacyProductsPage() {
 		} catch (err) {
 			console.error(err);
 		}
+	};
+
+	const runPendingAction = async () => {
+		if (!pendingAction) return;
+		if (pendingAction.type === "delete") {
+			await deleteProduct(pendingAction.productId);
+		} else {
+			await toggleStatus(pendingAction.product);
+		}
+		setPendingAction(null);
 	};
 
 	let processed = products.filter(p => {
@@ -241,8 +264,8 @@ export default function PharmacyProductsPage() {
 												<td className="px-6 py-4">
 													<div className="flex items-center gap-3">
 														<div className="w-10 h-10 bg-muted/50 rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
-															{p.images && p.images.length > 0 ? (
-																<img src={`http://localhost:5555${p.images[0]}`} alt={p.name} className="w-full h-full object-cover" />
+															{getImageUrl(p.images) ? (
+																<img src={getImageUrl(p.images)} alt={p.name} className="w-full h-full object-cover" />
 															) : (
 																<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground/60"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg>
 															)}
@@ -265,7 +288,7 @@ export default function PharmacyProductsPage() {
 												</td>
 												<td className="px-6 py-4 whitespace-nowrap">
 													<button
-														onClick={() => toggleStatus(p)}
+														onClick={() => setPendingAction({ type: "toggle", product: p })}
 														className={`px-3 py-1 rounded-full text-xs font-bold border transition-colors ${
 															p.isActive 
 																? "bg-green-100 text-green-800 border-green-200 hover:bg-green-200" 
@@ -285,7 +308,7 @@ export default function PharmacyProductsPage() {
 															Edit
 														</Link>
 														<button
-															onClick={() => handleDelete(p._id)}
+															onClick={() => setPendingAction({ type: "delete", productId: p._id, productName: p.name })}
 															className="rounded-lg bg-red-50 text-red-600 px-3 py-1.5 text-xs font-semibold hover:bg-red-100 transition-colors"
 														>
 															Delete
@@ -336,6 +359,21 @@ export default function PharmacyProductsPage() {
 					)}
 				</div>
 			</main>
+			<ConfirmModal
+				open={pendingAction !== null}
+				title={pendingAction?.type === "delete" ? "Confirm Delete" : "Confirm Status Change"}
+				message={
+					pendingAction?.type === "delete"
+						? `Delete ${pendingAction.productName}? This action cannot be undone.`
+						: pendingAction?.type === "toggle"
+							? `Mark ${pendingAction.product.name} as ${pendingAction.product.isActive ? "Inactive" : "Active"}?`
+							: ""
+				}
+				onCancel={() => setPendingAction(null)}
+				onConfirm={runPendingAction}
+				confirmLabel={pendingAction?.type === "delete" ? "Delete" : "Confirm"}
+				danger={pendingAction?.type === "delete"}
+			/>
 		</div>
 	);
 }

@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "../../../components/Sidebar";
 import Link from "next/link";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 interface User {
 	_id: string;
@@ -99,6 +101,55 @@ export default function PharmacyOrdersPage() {
 		} catch {
 			alert("Failed to update status");
 		}
+	};
+
+	const downloadInvoice = async (order: Order) => {
+		const doc = new jsPDF();
+		
+		doc.setFontSize(20);
+		doc.text("PetConnect Pharmacy - Invoice", 105, 20, { align: "center" });
+
+		doc.setFontSize(12);
+		doc.text(`Order ID: ${order._id}`, 20, 40);
+		doc.text(`Customer: ${order.userName || "Customer"}`, 20, 50);
+		doc.text(`Date: ${new Date(order.createdAt).toLocaleDateString()}`, 20, 60);
+		if (order.shippingAddress?.address) {
+			doc.text(`Address: ${order.shippingAddress.address}`, 20, 70);
+		}
+
+		doc.setFontSize(14);
+		doc.text("Items:", 20, 90);
+		
+		doc.setFontSize(12);
+		let y = 100;
+		doc.text("Product", 20, y);
+		doc.text("Qty", 120, y);
+		doc.text("Price", 140, y);
+		doc.text("Total", 170, y);
+		
+		y += 5;
+		doc.line(20, y, 190, y);
+		y += 10;
+
+		order.items.forEach(item => {
+			doc.text(item.productName.substring(0, 40), 20, y);
+			doc.text(item.quantity.toString(), 120, y);
+			doc.text(`Rs. ${item.price}`, 140, y);
+			doc.text(`Rs. ${item.price * item.quantity}`, 170, y);
+			y += 10;
+		});
+
+		y += 5;
+		doc.line(20, y, 190, y);
+		y += 10;
+		
+		doc.setFontSize(14);
+		doc.text(`Grand Total: Rs. ${order.totalAmount}`, 140, y);
+		doc.setFontSize(10);
+		doc.setTextColor(100);
+		doc.text("Thank you for choosing PetConnect Pharmacy!", 105, y+30, { align: "center" });
+
+		doc.save(`Invoice_${order._id}.pdf`);
 	};
 
 	let processed = orders.filter(o => {
@@ -251,14 +302,22 @@ export default function PharmacyOrdersPage() {
 									</div>
 
 									<div className="mt-auto pl-2 border-t border-border/50 pt-4 flex flex-col sm:flex-row justify-between items-center gap-4">
-										<div className="flex items-center gap-2">
-											<span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status:</span>
-											<span className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase ${
-												order.status === "delivered" ? "bg-green-100 text-green-800" : 
-												order.status === "shipped" ? "bg-blue-100 text-blue-800" :
-												order.status === "processing" ? "bg-purple-100 text-purple-800" :
-												order.status === "cancelled" ? "bg-red-100 text-red-800" : "bg-yellow-100 text-yellow-800"
-											}`}>{order.status}</span>
+										<div className="flex flex-col gap-2">
+											<div className="flex items-center gap-2">
+												<span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Status:</span>
+												<span className={`px-2 py-0.5 rounded text-[11px] font-bold uppercase ${
+													order.status === "delivered" ? "bg-green-100 text-green-800" : 
+													order.status === "shipped" ? "bg-blue-100 text-blue-800" :
+													order.status === "processing" ? "bg-purple-100 text-purple-800" :
+													order.status === "cancelled" ? "bg-red-100 text-red-800" : "bg-yellow-100 text-yellow-800"
+												}`}>{order.status}</span>
+											</div>
+											<button 
+												onClick={() => downloadInvoice(order)}
+												className="text-xs font-semibold text-primary hover:text-primary/80 flex items-center gap-1 transition-colors"
+											>
+												📄 Download Invoice PDF
+											</button>
 										</div>
 
 										<div className="flex gap-2 w-full sm:w-auto overflow-x-auto shrink-0 hide-scrollbar pb-1 sm:pb-0">

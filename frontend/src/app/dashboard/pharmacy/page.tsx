@@ -13,6 +13,11 @@ interface User {
 	lastName?: string;
 }
 
+interface ProductImage {
+	public_id?: string;
+	url?: string;
+}
+
 interface Product {
 	_id: string;
 	name: string;
@@ -20,7 +25,7 @@ interface Product {
 	price: number;
 	category: string;
 	stock: number;
-	images?: string[];
+	images?: Array<string | ProductImage>;
 	pharmacyId?: { _id: string; firstName: string; lastName: string };
 }
 
@@ -33,6 +38,20 @@ interface CartItem extends Product {
 	quantity: number;
 }
 
+const toAbsoluteImageUrl = (rawUrl: string) => {
+	if (!rawUrl) return "";
+	if (rawUrl.startsWith("http://") || rawUrl.startsWith("https://")) return rawUrl;
+	return `http://localhost:5555${rawUrl.startsWith("/") ? rawUrl : `/${rawUrl}`}`;
+};
+
+const getProductImageUrls = (images?: Array<string | ProductImage>) => {
+	if (!images || images.length === 0) return [];
+	return images
+		.map((img) => (typeof img === "string" ? img : img?.url || ""))
+		.filter(Boolean)
+		.map((url) => toAbsoluteImageUrl(url));
+};
+
 export default function PharmacyPage() {
 	const router = useRouter();
 	const [user, setUser] = useState<User | null>(null);
@@ -40,6 +59,7 @@ export default function PharmacyPage() {
 	const [loading, setLoading] = useState(true);
 	
 	const [cart, setCart] = useState<CartItem[]>([]);
+	const [stockError, setStockError] = useState("");
 	const [checkoutOpen, setCheckoutOpen] = useState(false);
 	const [shippingAddress, setShippingAddress] = useState({
 		firstName: "",
@@ -56,6 +76,7 @@ export default function PharmacyPage() {
 	const [maxPrice, setMaxPrice] = useState<number | "">("");
 	const [sortOrder, setSortOrder] = useState<"default" | "price_asc" | "price_desc" | "name">("default");
 	const [currentPage, setCurrentPage] = useState(1);
+	const [imageIndexByProduct, setImageIndexByProduct] = useState<Record<string, number>>({});
 	const ITEMS_PER_PAGE = 12;
 
 	useEffect(() => {
@@ -91,15 +112,28 @@ export default function PharmacyPage() {
 		}
 	};
 
-	const addToCart = (product: Product, vendor: Vendor) => {
+	const showStockExceeded = (productName: string, maxStock: number) => {
+		setStockError(`Cannot add more than ${maxStock} unit${maxStock === 1 ? "" : "s"} of ${productName}. Exceeded amount is not in stock.`);
+	};
+
+	const addToCart = (product: Product, _vendor: Vendor) => {
+		if (product.stock <= 0) {
+			showStockExceeded(product.name, 0);
+			return;
+		}
+
 		setCart((prev) => {
 			const existing = prev.find((p) => p._id === product._id);
 			if (existing) {
-				if (existing.quantity >= product.stock) return prev;
+				if (existing.quantity >= product.stock) {
+					showStockExceeded(product.name, product.stock);
+					return prev;
+				}
 				return prev.map((p) =>
 					p._id === product._id ? { ...p, quantity: p.quantity + 1 } : p
 				);
 			}
+			setStockError("");
 			return [...prev, { ...product, quantity: 1 }];
 		});
 	};
@@ -108,6 +142,13 @@ export default function PharmacyPage() {
 		setCart((prev) => {
 			const item = prev.find((p) => p._id === productId);
 			if (!item) return prev;
+
+			if (delta > 0 && item.quantity >= item.stock) {
+				showStockExceeded(item.name, item.stock);
+				return prev;
+			}
+
+			setStockError("");
 			const q = Math.max(0, Math.min(item.stock, item.quantity + delta));
 			if (q === 0) return prev.filter((p) => p._id !== productId);
 			return prev.map((p) =>
@@ -117,6 +158,21 @@ export default function PharmacyPage() {
 	};
 
 	const cartTotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+
+	const moveSlider = (productId: string, totalImages: number, direction: 1 | -1) => {
+		if (totalImages <= 1) return;
+		setImageIndexByProduct((prev) => {
+			const current = prev[productId] ?? 0;
+			const next = (current + direction + totalImages) % totalImages;
+			return { ...prev, [productId]: next };
+		});
+	};
+
+	useEffect(() => {
+		if (!stockError) return;
+		const timer = window.setTimeout(() => setStockError(""), 3000);
+		return () => window.clearTimeout(timer);
+	}, [stockError]);
 
 	const handlePayWithEsewa = async () => {
 		if (cart.length === 0 || !user) return;
@@ -222,12 +278,24 @@ export default function PharmacyPage() {
 			<Sidebar user={user} />
 			<main className="flex-1 overflow-y-auto p-6 md:p-8 lg:p-12">
 				<div className="max-w-7xl mx-auto">
+					{stockError && (
+						<div className="mb-6 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+							{stockError}
+						</div>
+					)}
+
 					{/* Header */}
 					<div className="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
 						<div>
 							<h1 className="text-3xl font-bold mb-2">Pharmacy</h1>
 							<p className="text-muted-foreground">Browse high-quality products from trusted pharmacy vendors.</p>
 						</div>
+						<Link
+							href="/dashboard/pharmacy/tracking"
+							className="inline-flex items-center justify-center rounded-lg border border-border px-4 py-2.5 text-sm font-semibold hover:bg-primary/5"
+						>
+							Track Orders
+						</Link>
 					</div>
 
 					{/* Filters & Search Bar */}
@@ -296,11 +364,33 @@ export default function PharmacyPage() {
 											className="rounded-2xl border border-border bg-card shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col group"
 										>
 											<div className="h-40 bg-muted/30 flex items-center justify-center p-4 relative overflow-hidden">
-												{p.images && p.images.length > 0 ? (
-													<img src={`http://localhost:5555${p.images[0]}`} alt={p.name} className="w-full h-full object-cover rounded-t-xl group-hover:scale-105 transition-transform duration-300" />
+													{getProductImageUrls(p.images).length > 0 ? (
+														<img
+															src={getProductImageUrls(p.images)[imageIndexByProduct[p._id] ?? 0]}
+															alt={p.name}
+															className="w-full h-full object-cover rounded-t-xl group-hover:scale-105 transition-transform duration-300"
+														/>
 												) : (
 													<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground/30"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg>
 												)}
+													{getProductImageUrls(p.images).length > 1 && (
+														<>
+															<button
+																onClick={() => moveSlider(p._id, getProductImageUrls(p.images).length, -1)}
+																className="absolute left-2 top-1/2 -translate-y-1/2 h-7 w-7 rounded-full bg-background/90 border border-border text-xs font-bold"
+																title="Previous image"
+															>
+																&lt;
+															</button>
+															<button
+																onClick={() => moveSlider(p._id, getProductImageUrls(p.images).length, 1)}
+																className="absolute right-2 top-1/2 -translate-y-1/2 h-7 w-7 rounded-full bg-background/90 border border-border text-xs font-bold"
+																title="Next image"
+															>
+																&gt;
+															</button>
+														</>
+													)}
 												<span className="absolute top-3 right-3 bg-background/90 backdrop-blur border border-border text-xs font-semibold px-2 py-1 rounded-md text-foreground shadow-sm">
 													{p.category}
 												</span>
@@ -382,8 +472,8 @@ export default function PharmacyPage() {
 									{cart.map((item) => (
 										<div key={item._id} className="flex gap-3 items-start">
 											<div className="w-12 h-12 bg-muted/50 rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
-												{item.images && item.images.length > 0 ? (
-													<img src={`http://localhost:5555${item.images[0]}`} alt={item.name} className="w-full h-full object-cover" />
+												{getProductImageUrls(item.images).length > 0 ? (
+													<img src={getProductImageUrls(item.images)[0]} alt={item.name} className="w-full h-full object-cover" />
 												) : (
 													<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground/50"><path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z"/><path d="m8.5 8.5 7 7"/></svg>
 												)}
@@ -394,8 +484,18 @@ export default function PharmacyPage() {
 												<div className="flex items-center gap-2 mt-2">
 													<button onClick={() => updateCartQuantity(item._id, -1)} className="w-6 h-6 rounded bg-muted flex items-center justify-center hover:bg-border transition-colors">-</button>
 													<span className="text-xs font-semibold w-4 text-center">{item.quantity}</span>
-													<button onClick={() => updateCartQuantity(item._id, 1)} className="w-6 h-6 rounded bg-muted flex items-center justify-center hover:bg-border transition-colors">+</button>
+													<button
+														onClick={() => updateCartQuantity(item._id, 1)}
+														disabled={item.quantity >= item.stock}
+														className="w-6 h-6 rounded bg-muted flex items-center justify-center hover:bg-border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+														title={item.quantity >= item.stock ? "Exceeded amount is not in stock" : "Increase quantity"}
+													>
+														+
+													</button>
 												</div>
+												{item.quantity >= item.stock && item.stock > 0 && (
+													<p className="mt-1 text-[10px] font-semibold text-destructive">Max limit reached</p>
+												)}
 											</div>
 											<div className="font-bold text-sm whitespace-nowrap">Rs. {item.price * item.quantity}</div>
 										</div>

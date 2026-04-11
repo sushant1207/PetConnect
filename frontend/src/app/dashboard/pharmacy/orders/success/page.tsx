@@ -20,21 +20,32 @@ function SuccessContent() {
 			try {
 				let status = "success";
 				let refId: string | null = null;
+				let resolvedOrderId: string | null = orderId;
+				let transactionUuid: string | null = null;
 
 				if (dataParam) {
 					try {
 						const decoded = JSON.parse(atob(dataParam));
 						status = decoded.status === "COMPLETE" ? "success" : "failed";
 						refId = decoded.transaction_code || decoded.refId || null;
+						transactionUuid = decoded.transaction_uuid || null;
+						if (!resolvedOrderId && transactionUuid) {
+							resolvedOrderId = transactionUuid;
+						}
 					} catch {
 						// Use default success
 					}
 				}
 
+				if (!resolvedOrderId) {
+					setVerifying(false);
+					return;
+				}
+
 				await fetch("http://localhost:5555/api/pharmacy/orders/pay/verify", {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ orderId, status, refId }),
+					body: JSON.stringify({ orderId: resolvedOrderId, status, refId, transactionUuid }),
 				});
 			} catch (err) {
 				console.error(err);
@@ -61,6 +72,12 @@ function SuccessContent() {
 					{verifying ? "Verifying payment..." : "Your order was placed successfully. Payment completed."}
 				</p>
 				<div className="space-y-4">
+					<Link
+						href="/dashboard/pharmacy/tracking"
+						className="block w-full border border-border font-semibold py-3 rounded-lg hover:bg-primary/5"
+					>
+						Track This Order
+					</Link>
 					<Link
 						href="/dashboard/pharmacy"
 						className="block w-full bg-primary text-primary-foreground font-semibold py-3 rounded-lg hover:bg-primary/90"

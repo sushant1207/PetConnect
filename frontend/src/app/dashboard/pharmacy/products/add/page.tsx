@@ -20,6 +20,8 @@ export default function AddProductPage() {
 	const [user, setUser] = useState<User | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [submitting, setSubmitting] = useState(false);
+	const [imageFiles, setImageFiles] = useState<File[]>([]);
+	const [previewUrls, setPreviewUrls] = useState<string[]>([]);
 	const [form, setForm] = useState({
 		name: "",
 		description: "",
@@ -46,24 +48,35 @@ export default function AddProductPage() {
 		}
 	}, [router]);
 
+	useEffect(() => {
+		if (imageFiles.length === 0) {
+			setPreviewUrls([]);
+			return;
+		}
+		const objectUrls = imageFiles.map((file) => URL.createObjectURL(file));
+		setPreviewUrls(objectUrls);
+		return () => objectUrls.forEach((url) => URL.revokeObjectURL(url));
+	}, [imageFiles]);
+
 	const handleSubmit = async (e: FormEvent) => {
 		e.preventDefault();
 		setSubmitting(true);
 		const token = localStorage.getItem("token");
 		try {
+			const body = new FormData();
+			body.append("name", form.name);
+			body.append("description", form.description);
+			body.append("price", form.price);
+			body.append("category", form.category);
+			body.append("stock", form.stock);
+			imageFiles.forEach((file) => body.append("images", file));
+
 			const res = await fetch("http://localhost:5555/api/pharmacy/products", {
 				method: "POST",
 				headers: {
-					"Content-Type": "application/json",
 					Authorization: `Bearer ${token}`,
 				},
-				body: JSON.stringify({
-					name: form.name,
-					description: form.description,
-					price: Number(form.price),
-					category: form.category,
-					stock: Number(form.stock),
-				}),
+				body,
 			});
 			const data = await res.json();
 			if (res.ok) {
@@ -157,6 +170,29 @@ export default function AddProductPage() {
 								))}
 							</select>
 						</div>
+									<div>
+										<label className="block text-sm font-medium mb-2">Product Images</label>
+										<input
+											type="file"
+											accept="image/*"
+											multiple
+											onChange={(e) => setImageFiles(Array.from(e.target.files || []))}
+											className="w-full rounded-lg border border-input bg-background px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/50"
+										/>
+										{previewUrls.length > 0 && (
+											<div className="mt-3 grid grid-cols-4 gap-2">
+												{previewUrls.map((url, index) => (
+													<img
+														key={`${url}-${index}`}
+														src={url}
+														alt={`Selected product preview ${index + 1}`}
+														className="h-20 w-20 rounded-lg object-cover border border-border"
+													/>
+												))}
+											</div>
+										)}
+										<p className="text-xs text-muted-foreground mt-1">Optional. You can upload multiple images (max recommended size: 5MB each).</p>
+									</div>
 						<div className="flex gap-3 pt-4">
 							<button
 								type="submit"
