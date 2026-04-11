@@ -14,13 +14,25 @@ interface User {
   address?: string;
 }
 
+interface Pet {
+  _id: string;
+  petId: string;
+  name: string;
+  species: string;
+  isActive?: boolean;
+}
+
 export default function SettingsPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [petActionLoadingId, setPetActionLoadingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [petError, setPetError] = useState("");
+  const [petSuccess, setPetSuccess] = useState("");
+  const [pets, setPets] = useState<Pet[]>([]);
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -43,12 +55,29 @@ export default function SettingsPage() {
       setLastName(parsedUser.lastName || "");
       setPhone(parsedUser.phone || "");
       setAddress(parsedUser.address || "");
+      void fetchPets(parsedUser._id);
     } catch (e) {
       router.push("/login");
     } finally {
       setLoading(false);
     }
   }, [router]);
+
+  const fetchPets = async (ownerId: string) => {
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`http://localhost:5555/api/pets/owner/${ownerId}?includeInactive=true`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to fetch pets");
+      }
+      setPets(data.pets || []);
+    } catch (err: any) {
+      setPetError(err.message || "Failed to fetch pets");
+    }
+  };
 
   const handleSave = async () => {
     if (!user) return;
@@ -91,6 +120,72 @@ export default function SettingsPage() {
       setError(err.message || "Something went wrong");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDeactivatePet = async (pet: Pet) => {
+    if (!user) return;
+    const confirmed = window.confirm(`Mark ${pet.name} as inactive? This hides it from active pet lists.`);
+    if (!confirmed) return;
+
+    setPetError("");
+    setPetSuccess("");
+    setPetActionLoadingId(pet._id);
+
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`http://localhost:5555/api/pets/${pet._id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ isActive: false }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to make pet inactive");
+      }
+
+      setPetSuccess(`${pet.name} is now inactive.`);
+      await fetchPets(user._id);
+    } catch (err: any) {
+      setPetError(err.message || "Failed to make pet inactive");
+    } finally {
+      setPetActionLoadingId(null);
+    }
+  };
+
+  const handleDeletePet = async (pet: Pet) => {
+    if (!user) return;
+    const confirmed = window.confirm(`Delete ${pet.name} permanently? This action cannot be undone.`);
+    if (!confirmed) return;
+
+    setPetError("");
+    setPetSuccess("");
+    setPetActionLoadingId(pet._id);
+
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch(`http://localhost:5555/api/pets/${pet._id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || "Failed to delete pet");
+      }
+
+      setPetSuccess(`${pet.name} was deleted.`);
+      await fetchPets(user._id);
+    } catch (err: any) {
+      setPetError(err.message || "Failed to delete pet");
+    } finally {
+      setPetActionLoadingId(null);
     }
   };
 
@@ -193,6 +288,67 @@ export default function SettingsPage() {
                   />
                 </div>
               </div>
+            </div>
+
+            <div className="rounded-lg border border-border bg-card p-6">
+              <h2 className="text-xl font-semibold mb-1">Pet Data Management</h2>
+              <p className="text-sm text-muted-foreground mb-4">
+                You can deactivate a pet (soft delete) or permanently delete pet data.
+              </p>
+
+              {petError && (
+                <div className="mb-4 rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive">
+                  {petError}
+                </div>
+              )}
+
+              {petSuccess && (
+                <div className="mb-4 rounded-lg bg-green-100 border border-green-200 p-3 text-sm text-green-800">
+                  {petSuccess}
+                </div>
+              )}
+
+              {pets.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+                  No pet records found.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {pets.map((pet) => {
+                    const isBusy = petActionLoadingId === pet._id;
+                    const inactive = pet.isActive === false;
+
+                    return (
+                      <div key={pet._id} className="rounded-lg border border-border p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <p className="font-semibold">{pet.name}</p>
+                          <p className="text-sm text-muted-foreground">{pet.species} • ID: {pet.petId}</p>
+                          <p className={`text-xs mt-1 ${inactive ? "text-amber-700" : "text-green-700"}`}>
+                            {inactive ? "Inactive" : "Active"}
+                          </p>
+                        </div>
+
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleDeactivatePet(pet)}
+                            disabled={isBusy || inactive}
+                            className="rounded-lg border border-amber-500 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-50"
+                          >
+                            {isBusy ? "Please wait..." : inactive ? "Already Inactive" : "Make Inactive"}
+                          </button>
+                          <button
+                            onClick={() => handleDeletePet(pet)}
+                            disabled={isBusy}
+                            className="rounded-lg border border-destructive px-3 py-2 text-xs font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-50"
+                          >
+                            {isBusy ? "Please wait..." : "Delete Permanently"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div className="flex gap-4">

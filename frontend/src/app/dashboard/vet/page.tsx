@@ -44,6 +44,7 @@ export default function VetDashboardPage() {
   const [selectedDate, setSelectedDate] = useState<Value>(new Date());
   const [filteredAppointments, setFilteredAppointments] = useState<Appointment[]>([]);
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "confirmed" | "completed" | "cancelled">("all");
+  const [searchTerm, setSearchTerm] = useState("");
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -85,9 +86,24 @@ export default function VetDashboardPage() {
         return aptDate === dateStr;
       });
     }
+
+    // Apply search filter across pet, owner and reason fields
+    if (searchTerm.trim() !== "") {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter((apt) => {
+        const ownerName = `${apt.user.firstName || ""} ${apt.user.lastName || ""}`.toLowerCase();
+        return (
+          apt.petName.toLowerCase().includes(term) ||
+          apt.petType.toLowerCase().includes(term) ||
+          apt.reason.toLowerCase().includes(term) ||
+          apt.user.email.toLowerCase().includes(term) ||
+          ownerName.includes(term)
+        );
+      });
+    }
     
     setFilteredAppointments(filtered);
-  }, [selectedDate, appointments, statusFilter, viewMode]);
+  }, [selectedDate, appointments, statusFilter, viewMode, searchTerm]);
 
   const fetchAppointments = async (userId: string) => {
     try {
@@ -209,6 +225,13 @@ export default function VetDashboardPage() {
               <p className="text-muted-foreground">Manage your appointments and schedule</p>
             </div>
             <div className="flex gap-2 flex-wrap">
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search pet, owner, email, reason..."
+                className="px-4 py-2 rounded-lg border border-border bg-background text-sm outline-none focus:ring-2 focus:ring-primary/50 min-w-[260px]"
+              />
               <button
                 onClick={() => setViewMode("calendar")}
                 className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${

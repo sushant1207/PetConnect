@@ -30,11 +30,17 @@ export default function RegisterPage() {
   const [success, setSuccess] = useState("");
   const [step, setStep] = useState<"register" | "verify">("register");
   const [otp, setOtp] = useState("");
+  const [acceptTerms, setAcceptTerms] = useState(false);
 
   async function onRegisterSubmit(e: FormEvent) {
     e.preventDefault();
     setError("");
     setSuccess("");
+
+    if (!acceptTerms) {
+      setError("Please accept the Terms & Conditions to continue");
+      return;
+    }
 
     if (password !== confirmPassword) {
       setError("Passwords do not match");
@@ -255,9 +261,21 @@ export default function RegisterPage() {
                     </div>
                   </div>
 
+                  <label className="flex items-start gap-3 rounded-xl border border-slate-100 bg-slate-50 px-4 py-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={acceptTerms}
+                      onChange={(e) => setAcceptTerms(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary/40"
+                    />
+                    <span className="text-xs font-semibold text-slate-600 leading-relaxed">
+                      I agree to the <span className="text-slate-900">Terms & Conditions</span>.
+                    </span>
+                  </label>
+
                   <button
                     type="submit"
-                    disabled={loading}
+                    disabled={loading || !acceptTerms}
                     className="w-full mt-3 bg-slate-900 hover:bg-black text-white rounded-xl py-4 font-black uppercase text-xs tracking-[0.2em] shadow-xl shadow-slate-900/10 transition-all active:scale-[0.98] disabled:opacity-50"
                   >
                     {loading ? "Initializing..." : "Register Now"}
