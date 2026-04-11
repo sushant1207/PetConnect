@@ -5,6 +5,7 @@ export interface IPet extends Document {
 	petId: string; // Unique pet ID for QR code
 	name: string;
 	species: "dog" | "cat" | "bird" | "rabbit" | "other";
+	isActive: boolean;
 	breed?: string;
 	age?: number;
 	gender?: "male" | "female" | "unknown";
@@ -22,6 +23,7 @@ const petSchema = new Schema<IPet>(
 		petId: { type: String, unique: true, sparse: true, index: true },
 		name: { type: String, required: true, trim: true },
 		species: { type: String, enum: ["dog", "cat", "bird", "rabbit", "other"], required: true },
+		isActive: { type: Boolean, default: true, index: true },
 		breed: String,
 		age: Number,
 		gender: { type: String, enum: ["male", "female", "unknown"] },

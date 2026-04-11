@@ -5,7 +5,8 @@ import {
 	getReportById,
 	updateReport,
 	deleteReport,
-	getMyReports
+	getMyReports,
+	flagPost
 } from "../controller/lostFoundController";
 import { authenticate } from "../utils/auth";
 
@@ -176,5 +177,34 @@ router.put("/:id", authenticate as any, updateReport);
  *         description: Report not found
  */
 router.delete("/:id", authenticate as any, deleteReport);
+
+/**
+ * @swagger
+ * /api/lost-found/{id}/flag:
+ *   post:
+ *     tags: [LostFound]
+ *     summary: Flag a post for moderation
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [reason]
+ *             properties:
+ *               reason: { type: string }
+ *     responses:
+ *       201:
+ *         description: Post flagged
+ *       400:
+ *         description: Already reported
+ */
+router.post("/:id/flag", authenticate as any, flagPost);
 
 export default router;
